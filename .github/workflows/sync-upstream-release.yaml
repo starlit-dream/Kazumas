@@ -50,7 +50,8 @@ jobs:
           fi
 
           git push origin "$SYNC_BRANCH"
-          gh pr create --title "Sync upstream ver $LATEST_TAG" \
+          gh pr create ​--repo ${{ github.repository }} \
+                       --title "Sync upstream ver $LATEST_TAG" \
                        --body "zsbd" \
                        --base main \
                        --head "$SYNC_BRANCH"
