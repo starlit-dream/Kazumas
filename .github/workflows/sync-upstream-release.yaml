@@ -48,9 +48,9 @@ jobs:
             git add .
             git commit -m "chore: sync $LATEST_TAG with conflicts"
           fi
-
+          
           git push origin "$SYNC_BRANCH"
-          gh pr create ​--repo ${{ github.repository }} \
+          gh pr create --repo starlit-dream/Kazumas \
                        --title "Sync upstream ver $LATEST_TAG" \
                        --body "zsbd" \
                        --base main \
