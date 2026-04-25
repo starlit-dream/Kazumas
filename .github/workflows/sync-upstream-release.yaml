@@ -3,7 +3,7 @@ name: Sync Upstream Release
 on:
   schedule:
     - cron: '0 0 * * *'
-  workflow_dispatch: 
+  workflow_dispatch:
 
 jobs:
   sync_release:
@@ -21,10 +21,16 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Add upstream remote if not exists
+        run: |
+          git remote | grep '^upstream$' || git remote add upstream "https://github.com/$UPSTREAM_REPO.git"
+        env:
+          UPSTREAM_REPO: "Predidit/Kazumi"
+
       - name: Sync via GitHub CLI
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UPSTREAM_REPO: "Predidit/Kazumi" 
+          UPSTREAM_REPO: "Predidit/Kazumi"
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
@@ -37,23 +43,32 @@ jobs:
             exit 0
           fi
 
-          git remote add upstream "https://github.com/$UPSTREAM_REPO.git"
           git fetch upstream --tags
 
           SYNC_BRANCH="sync-upstream-$LATEST_TAG"
-          git checkout -b "$SYNC_BRANCH"
-          
+          # 删除本地同名分支（如果存在）
+          if git show-ref --quiet refs/heads/"$SYNC_BRANCH"; then
+            git branch -D "$SYNC_BRANCH"
+          fi
+          git checkout -b "$SYNC_BRANCH" main
+
           if git merge "$LATEST_TAG" --allow-unrelated-histories -m "Sync upstream release $LATEST_TAG"; then
             echo "Merge complete."
           else
-            echo "Merge failed,waiting for check."
+            echo "Merge failed, waiting for check."
             git add .
-            git commit -m "chore: sync $LATEST_TAG with conflicts"
+            git commit -m "chore: sync $LATEST_TAG with conflicts" || true
           fi
-          
-          git push origin "$SYNC_BRANCH"
-          gh pr create --repo starlit-dream/Kazumas \
-                       --title "Sync upstream ver $LATEST_TAG" \
-                       --body "zsbd" \
-                       --base main \
-                       --head "$SYNC_BRANCH"
+
+          git push -f origin "$SYNC_BRANCH"
+
+          # 检查是否已存在同分支的PR
+          if gh pr list --head "$SYNC_BRANCH" --repo starlit-dream/Kazumas | grep -q .; then
+            echo "PR already exists for $SYNC_BRANCH"
+          else
+            gh pr create --repo starlit-dream/Kazumas \
+                         --title "Sync upstream ver $LATEST_TAG" \
+                         --body "zsbd" \
+                         --base main \
+                         --head "$SYNC_BRANCH"
+          fi
