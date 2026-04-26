@@ -33,9 +33,9 @@ class MainActivity: AudioServiceActivity() {
     private var autoEnterPipOnHomeGesture = false
     private var pipInPlayerPage = false
 
-    private val actionPipPlayPause = "com.predidit.kazumi.pip.PLAY_PAUSE"
-    private val actionPipForward = "com.predidit.kazumi.pip.FORWARD"
-    private val actionPipToggleDanmaku = "com.predidit.kazumi.pip.TOGGLE_DANMAKU"
+    private val actionPipPlayPause = "com.starlitdream.kazumas.pip.PLAY_PAUSE"
+    private val actionPipForward = "com.starlitdream.kazumas.pip.FORWARD"
+    private val actionPipToggleDanmaku = "com.starlitdream.kazumas.pip.TOGGLE_DANMAKU"
 
     private val pipActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
