@@ -2,6 +2,8 @@ import 'package:kazumi/utils/logger.dart';
 import 'package:kazumi/request/api.dart';
 import 'package:kazumi/request/request.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/subject_relation.dart';
+import 'package:kazumi/modules/bangumi/episode_progress.dart';
 import 'package:kazumi/modules/comments/comment_response.dart';
 import 'package:kazumi/modules/characters/characters_response.dart';
 import 'package:kazumi/modules/bangumi/episode_item.dart';
@@ -397,6 +399,29 @@ class BangumiHTTP {
     }
   }
 
+  static Future<List<EpisodeInfo>> getBangumiEpisodes(int subjectId,
+      {int limit = 100, int offset = 0}) async {
+    try {
+      var params = <String, dynamic>{
+        'subject_id': subjectId,
+        'limit': limit,
+        'offset': offset,
+      };
+      final res = await Request().get(
+        Api.bangumiAPIDomain + Api.bangumiEpisodeByID,
+        data: params,
+      );
+      final data = res.data['data'] as List<dynamic>? ?? [];
+      return data
+          .whereType<Map<String, dynamic>>()
+          .map(EpisodeInfo.fromJson)
+          .toList();
+    } catch (e) {
+      KazumiLogger().e('Bangumi: failed to get episodes', error: e);
+      return [];
+    }
+  }
+
   static Future<EpisodeInfo> getBangumiEpisodeByID(int id, int episode) async {
     EpisodeInfo episodeInfo = EpisodeInfo.fromTemplate();
     var params = <String, dynamic>{
@@ -469,6 +494,77 @@ class BangumiHTTP {
       shouldRethrow: true,
     );
     return CharactersResponse.fromJson(res.data);
+  }
+
+  static Future<BangumiEpisodeProgressResponse?> getEpisodeProgress(
+      int subjectId) async {
+    try {
+      final username = Request.setting
+          .get('bangumiUsername', defaultValue: '')
+          .toString()
+          .trim();
+      if (username.isEmpty) {
+        throw Exception('Bangumi 用户名为空，请重新登录');
+      }
+      final res = await Request().get(
+        Api.formatUrl(
+            Api.bangumiAPIDomain + Api.bangumiMyCollectionEpisodes,
+            [subjectId]),
+        options: _authOptions(),
+        extra: {'customError': ''},
+      );
+      return BangumiEpisodeProgressResponse.fromJson(
+        Map<String, dynamic>.from(res.data),
+      );
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 404) {
+        return null;
+      }
+      KazumiLogger().e('Bangumi: failed to get episode progress', error: e);
+      return null;
+    } catch (e) {
+      KazumiLogger().e('Bangumi: failed to get episode progress', error: e);
+      return null;
+    }
+  }
+
+  static Future<void> batchUpdateEpisodeProgress({
+    required int subjectId,
+    required List<int> episodeIds,
+    required int type,
+  }) async {
+    if (episodeIds.isEmpty) return;
+    await Request().patch(
+      Api.formatUrl(
+          Api.bangumiAPIDomain + Api.bangumiMyCollectionEpisodes,
+          [subjectId]),
+      data: {
+        'episode_id': episodeIds,
+        'type': type,
+      },
+      options: _authOptions(),
+      extra: {'customError': 'Bangumi 剧集进度同步失败'},
+      shouldRethrow: true,
+    );
+  }
+
+  static Future<List<BangumiSubjectRelation>> getSubjectRelations(
+      int subjectId) async {
+    try {
+      final res = await Request().get(
+        Api.formatUrl(
+            Api.bangumiAPIDomain + Api.bangumiSubjectRelation, [subjectId]),
+        extra: {'customError': ''},
+      );
+      final data = res.data as List<dynamic>? ?? [];
+      return data
+          .whereType<Map<String, dynamic>>()
+          .map(BangumiSubjectRelation.fromJson)
+          .toList();
+    } catch (e) {
+      KazumiLogger().e('Bangumi: failed to get subject relations', error: e);
+      return [];
+    }
   }
 
   static Future<CharacterFullItem> getCharacterByCharacterID(int id) async {

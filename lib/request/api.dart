@@ -64,6 +64,8 @@ class Api {
   static const String bangumiCharacterByID = '/v0/subjects/{0}/characters';
   /// 从条目ID获取剧集ID
   static const String bangumiEpisodeByID = '/v0/episodes';
+  /// 条目关联关系
+  static const String bangumiSubjectRelation = '/v0/subjects/{0}/subjects';
 
   /// Bangumi Next API Domain
   static const String bangumiAPINextDomain = 'https://next.bgm.tv';

@@ -5,9 +5,11 @@ import 'package:kazumi/bean/widget/error_widget.dart';
 import 'package:kazumi/bean/card/comments_card.dart';
 import 'package:kazumi/bean/card/character_card.dart';
 import 'package:kazumi/bean/card/staff_card.dart';
+import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/utils/utils.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/subject_relation.dart';
 import 'package:kazumi/modules/comments/comment_item.dart';
 import 'package:kazumi/modules/characters/character_item.dart';
 import 'package:kazumi/modules/staff/staff_item.dart';
@@ -30,6 +32,8 @@ class InfoTabView extends StatefulWidget {
     required this.characterList,
     required this.staffList,
     required this.isLoading,
+    this.relatedSubjectList = const [],
+    this.relatedSubjectsLoading = false,
   });
 
   final bool commentsQueryTimeout;
@@ -47,6 +51,8 @@ class InfoTabView extends StatefulWidget {
   final List<CharacterItem> characterList;
   final List<StaffFullItem> staffList;
   final bool isLoading;
+  final List<BangumiSubjectRelation> relatedSubjectList;
+  final bool relatedSubjectsLoading;
 
   @override
   State<InfoTabView> createState() => _InfoTabViewState();
@@ -161,11 +167,132 @@ class _InfoTabViewState extends State<InfoTabView>
                     },
                   );
                 }).toList(),
-              )
+              ),
+              relatedSubjectsBody,
             ],
           ),
         ),
       ),
+    );
+  }
+
+  Widget get relatedSubjectsBody {
+    if (widget.relatedSubjectList.isEmpty && !widget.relatedSubjectsLoading) {
+      return const SizedBox.shrink();
+    }
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 16),
+        Text('相关番剧', style: TextStyle(fontSize: 18)),
+        const SizedBox(height: 8),
+        if (widget.relatedSubjectsLoading)
+          SizedBox(
+            height: 200,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: 4,
+              itemBuilder: (context, index) {
+                return Container(
+                  width: 120,
+                  margin: const EdgeInsets.only(right: 12),
+                  child: Skeletonizer.zone(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Container(
+                          width: 120,
+                          height: 160,
+                          decoration: BoxDecoration(
+                            color: Theme.of(context)
+                                .colorScheme
+                                .onInverseSurface
+                                .withValues(alpha: 0.1),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Bone.text(width: 80),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          )
+        else
+          SizedBox(
+            height: 200,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: widget.relatedSubjectList.length,
+              itemBuilder: (context, index) {
+                final relation = widget.relatedSubjectList[index];
+                final displayName = relation.nameCn.isNotEmpty
+                    ? relation.nameCn
+                    : relation.name;
+                return GestureDetector(
+                  onTap: () {
+                    final bangumiItem = BangumiItem(
+                      id: relation.id,
+                      type: relation.type,
+                      name: relation.name,
+                      nameCn: relation.nameCn,
+                      summary: '',
+                      airDate: '',
+                      airWeekday: 0,
+                      rank: 0,
+                      images: {
+                        'large': relation.image,
+                        'common': '',
+                        'medium': '',
+                        'small': '',
+                        'grid': '',
+                      },
+                      tags: [],
+                      alias: [],
+                      ratingScore: 0,
+                      votes: 0,
+                      votesCount: [],
+                      info: '',
+                    );
+                    Modular.to.pushNamed('/info/', arguments: bangumiItem);
+                  },
+                  child: Container(
+                    width: 120,
+                    margin: const EdgeInsets.only(right: 12),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        NetworkImgLayer(
+                          src: relation.image,
+                          width: 120,
+                          height: 160,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          relation.relation,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        Text(
+                          displayName,
+                          style: const TextStyle(fontSize: 13),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+      ],
     );
   }
 

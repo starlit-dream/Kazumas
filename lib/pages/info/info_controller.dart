@@ -1,7 +1,9 @@
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
+import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:flutter_modular/flutter_modular.dart';
+import 'package:kazumi/modules/bangumi/subject_relation.dart';
 import 'package:kazumi/modules/search/plugin_search_module.dart';
 import 'package:kazumi/request/bangumi.dart';
 import 'package:mobx/mobx.dart';
@@ -37,7 +39,31 @@ abstract class _InfoController with Store {
   var staffList = ObservableList<StaffFullItem>();
 
   @observable
+  var relatedSubjectList = ObservableList<BangumiSubjectRelation>();
+
+  @observable
+  bool relatedSubjectsLoading = false;
+
+  @observable
   int syncedCollectType = 0;
+
+  @observable
+  bool episodeProgressLoading = false;
+
+  @observable
+  int episodeProgressTotal = 0;
+
+  @observable
+  int episodeProgressWatched = 0;
+
+  /// episodeId -> type (0=未看, 2=已看)
+  final ObservableMap<int, int> episodeProgressMap = ObservableMap<int, int>();
+
+  @observable
+  var bangumiEpisodeList = ObservableList<Map<String, dynamic>>();
+
+  @observable
+  bool bangumiEpisodesLoading = false;
 
   Future<void> queryBangumiInfoByID(int id, {String type = "init"}) async {
     isLoading = true;
@@ -115,5 +141,112 @@ abstract class _InfoController with Store {
       staffList.addAll(value.data);
     });
     KazumiLogger().i('InfoController: loaded staff list length ${staffList.length}');
+  }
+
+  Future<void> queryEpisodeProgress(int subjectId) async {
+    if (episodeProgressLoading) return;
+    episodeProgressLoading = true;
+    try {
+      final progress = await BangumiHTTP.getEpisodeProgress(subjectId);
+      if (progress != null) {
+        episodeProgressMap.clear();
+        for (final ep in progress.data) {
+          episodeProgressMap[ep.episodeId] = ep.type;
+        }
+        episodeProgressTotal = progress.total;
+        episodeProgressWatched = progress.watchedCount;
+      }
+    } catch (e) {
+      KazumiLogger().e('InfoController: failed to load episode progress',
+          error: e);
+    } finally {
+      episodeProgressLoading = false;
+    }
+  }
+
+  Future<void> toggleEpisodeWatch({
+    required int subjectId,
+    required int episodeId,
+    required bool watched,
+  }) async {
+    final type = watched ? 2 : 0;
+    try {
+      // Update locally first for responsiveness
+      episodeProgressMap[episodeId] = type;
+      if (watched) {
+        episodeProgressWatched++;
+      } else {
+        episodeProgressWatched--;
+      }
+      if (episodeProgressWatched < 0) episodeProgressWatched = 0;
+
+      // Sync to Bangumi
+      await BangumiHTTP.batchUpdateEpisodeProgress(
+        subjectId: subjectId,
+        episodeIds: [episodeId],
+        type: type,
+      );
+
+      // Also sync collection if needed
+      if (BangumiAuth.isLoggedIn) {
+        await collectController.markEpisodeWatchedIfNeeded(
+          bangumiItem: bangumiItem,
+          subjectId: subjectId,
+          episodeId: episodeId,
+        );
+      }
+    } catch (e) {
+      // Revert on failure
+      episodeProgressMap[episodeId] = watched ? 0 : 2;
+      if (watched) {
+        episodeProgressWatched--;
+      } else {
+        episodeProgressWatched++;
+      }
+      KazumiDialog.showToast(message: '剧集进度同步失败 ${e.toString()}');
+    }
+  }
+
+  Future<void> queryBangumiEpisodes(int subjectId) async {
+    if (bangumiEpisodesLoading) return;
+    bangumiEpisodesLoading = true;
+    try {
+      final episodes = await BangumiHTTP.getBangumiEpisodes(subjectId);
+      bangumiEpisodeList.clear();
+      bangumiEpisodeList.addAll(
+        episodes.map((ep) => {
+              'id': ep.id,
+              'sort': ep.episode,
+              'name': ep.name,
+              'name_cn': ep.nameCn,
+              'type': ep.type,
+            }),
+      );
+      if (episodeProgressTotal == 0) {
+        episodeProgressTotal = episodes.length;
+      }
+      KazumiLogger().i(
+          'InfoController: loaded ${episodes.length} bangumi episodes');
+    } catch (e) {
+      KazumiLogger().e('InfoController: failed to load episodes', error: e);
+    } finally {
+      bangumiEpisodesLoading = false;
+    }
+  }
+
+  Future<void> queryRelatedSubjects(int subjectId) async {
+    if (relatedSubjectsLoading) return;
+    relatedSubjectsLoading = true;
+    try {
+      final relations = await BangumiHTTP.getSubjectRelations(subjectId);
+      relatedSubjectList.clear();
+      relatedSubjectList.addAll(relations);
+      KazumiLogger().i(
+          'InfoController: loaded ${relations.length} related subjects');
+    } catch (e) {
+      KazumiLogger().e('InfoController: failed to load related subjects', error: e);
+    } finally {
+      relatedSubjectsLoading = false;
+    }
   }
 }
