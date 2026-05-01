@@ -56,7 +56,11 @@ jobs:
         run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.8 --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
       - name: Package android build output
-        run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Kazumi_android_canary.apk
+        run: |
+          ls build/app/outputs/flutter-apk/
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk  Kazumi_android_armeabi-v7a_canary_${{ github.sha }}.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk    Kazumi_android_arm64-v8a_canary_${{ github.sha }}.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk      Kazumi_android_x86_64_canary_${{ github.sha }}.apk
         shell: bash
       - name: Upload android outputs
         uses: actions/upload-artifact@v4
@@ -97,7 +101,7 @@ jobs:
           (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_id_placeholder", "$env:BANGUMI_APP_ID" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
           (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_secret_placeholder", "$env:BANGUMI_APP_SECRET" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
       - run: flutter build windows --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.8 --dart-define=BUILD_COMMIT=${{ github.sha }}
-      - run: Compress-Archive build/windows/x64/runner/Release/* Kazumi_windows_canary.zip
+      - run: Compress-Archive build/windows/x64/runner/Release/* Kazumi_windows_canary_${{ github.sha }}.zip
       - name: Upload windows outputs
         uses: actions/upload-artifact@v4
         with:
@@ -135,7 +139,7 @@ jobs:
           mkdir Payload
           cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
           find Payload/Runner.app/Frameworks -type d -name "*.framework" -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \;
-          zip -q -r Kazumi_ios_canary_no_sign.ipa Payload
+          zip -q -r Kazumi_ios_canary_no_sign_${{ github.sha }}.ipa Payload
       - name: Upload iOS build
         uses: actions/upload-artifact@v4
         with:
@@ -168,7 +172,7 @@ jobs:
           create-dmg build/macos/Build/Products/Release/Kazumi.app
         continue-on-error: true
       - name: Rename DMG
-        run: mv Kazumi*.dmg Kazumi_macos_canary.dmg
+        run: mv Kazumi*.dmg Kazumi_macos_canary_${{ github.sha }}.dmg
       - name: Upload macOS build
         uses: actions/upload-artifact@v4
         with:
@@ -221,11 +225,11 @@ jobs:
       - name: Package linux build output
         run: |
           # Tarball package
-          tar -zcvf Kazumi_linux_canary.tar.gz -C build/linux/x64/release/bundle .
+          tar -zcvf Kazumi_linux_canary_${{ github.sha }}.tar.gz -C build/linux/x64/release/bundle .
 
           # Debian package
-          mkdir Kazumi_linux_canary_amd64
-          cd Kazumi_linux_canary_amd64
+          mkdir Kazumi_linux_canary_amd64_${{ github.sha }}
+          cd Kazumi_linux_canary_amd64_${{ github.sha }}
           mkdir -p opt/Kazumi
           mkdir -p usr/share/applications
           mkdir -p usr/share/icons/hicolor/512x512/apps
@@ -255,7 +259,7 @@ jobs:
           cp ../assets/images/logo/logo_linux.png usr/share/icons/hicolor/512x512/apps/io.github.starlitdream.Kazumas.png
 
           cd ..
-          dpkg-deb --build --root-owner-group Kazumi_linux_canary_amd64
+          dpkg-deb --build --root-owner-group Kazumi_linux_canary_amd64_${{ github.sha }}
         shell: bash
       - name: Upload linux outputs
         uses: actions/upload-artifact@v4
@@ -296,7 +300,26 @@ jobs:
           tag_name: pre-release-${{ github.run_number }}
           prerelease: true
           name: "Pre-Release Build #${{ github.run_number }}"
-          body: "🔄 Automated pre-release build from main branch\n\n**Commit:** ${{ github.sha }}\n**Branch:** main\n**Time:** $(date)"
+          body: |
+            > ⚠️ **WARNING: This is a Pre-Release Build**
+            > 该版本为自动化预发布构建，可能包含未稳定的功能或 Bug，请谨慎使用。
+            > 此版本**不应**用于生产环境。
+
+            ---
+
+            🔄 **Automated Pre-Release Build**
+
+            | 元数据 | 值 |
+            |--------|-----|
+            | **Commit** | `${{ github.sha }}` |
+            | **Branch** | `main` |
+            | **Version** | `canary` |
+            | **Build Time** | `${{ github.event.head_commit.timestamp }}` |
+            | **Run Number** | `#${{ github.run_number }}` |
+
+            ---
+
+            **📦 包含平台：** Android (armeabi-v7a / arm64-v8a / x86_64) · Windows · iOS · macOS · Linux
           files: release_files/*
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
