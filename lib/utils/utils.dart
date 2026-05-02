@@ -218,12 +218,15 @@ class Utils {
   static bool needUpdate(localVersion, remoteVersion) {
     List<String> localVersionList = localVersion.split('.');
     List<String> remoteVersionList = remoteVersion.split('.');
-    for (int i = 0; i < localVersionList.length; i++) {
-      int localVersion = int.parse(localVersionList[i]);
-      int remoteVersion = int.parse(remoteVersionList[i]);
-      if (remoteVersion > localVersion) {
+    final maxLength = max(localVersionList.length, remoteVersionList.length);
+    for (int i = 0; i < maxLength; i++) {
+      final int localSegment =
+          i < localVersionList.length ? int.parse(localVersionList[i]) : 0;
+      final int remoteSegment =
+          i < remoteVersionList.length ? int.parse(remoteVersionList[i]) : 0;
+      if (remoteSegment > localSegment) {
         return true;
-      } else if (remoteVersion < localVersion) {
+      } else if (remoteSegment < localSegment) {
         return false;
       }
     }
@@ -265,6 +268,16 @@ class Utils {
       return "$hours:$minutes:$seconds";
     }
   }
+
+  /// 格式化相似度为百分比字符串，默认为1位小数，空值时返回 `--`
+  static String formatTraceSimilarity(double? similarity,
+      {int fractionDigits = 1, String empty = '--'}) {
+    if (similarity == null) {
+      return empty;
+    }
+    return '${(similarity * 100).toStringAsFixed(fractionDigits)}%';
+  }
+
 
   static Future<String> latest() async {
     try {

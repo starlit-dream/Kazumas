@@ -16,6 +16,7 @@ import 'package:kazumi/pages/settings/keyboard_settings.dart';
 import 'package:kazumi/pages/settings/download_settings.dart';
 import 'package:kazumi/pages/settings/bangumi_auth_settings_page.dart';
 import 'package:kazumi/pages/download/download_page_module.dart';
+import 'package:kazumi/pages/bangumi/bangumi_module.dart';
 
 class SettingsModule extends Module {
   @override
@@ -40,5 +41,6 @@ class SettingsModule extends Module {
     r.module("/download", module: DownloadModule());
     r.child("/download-settings", child: (_) => const DownloadSettingsPage());
     r.child("/bangumi", child: (_) => const BangumiAuthSettingsPage());
+    r.module("/bangumi-sync", module: BangumiModule());
   }
 }
