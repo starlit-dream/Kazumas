@@ -96,6 +96,31 @@ class BangumiHTTP {
     }
   }
 
+  static Future<BangumiSubjectCollection?> getUserSubjectCollection(int subjectId) async {
+    try {
+      final username = Request.setting
+          .get('bangumiUsername', defaultValue: '')
+          .toString()
+          .trim();
+      if (username.isEmpty) {
+        return null;
+      }
+      final res = await Request().get(
+        Api.formatUrl(
+            Api.bangumiAPIDomain + '/v0/users/{0}/collections/{1}',
+            [username, subjectId]),
+        options: _authOptions(),
+        extra: {'customError': ''},
+      );
+      return BangumiSubjectCollection.fromJson(
+        Map<String, dynamic>.from(res.data),
+      );
+    } catch (e) {
+      KazumiLogger().e('Bangumi: failed to get user collection', error: e);
+      return null;
+    }
+  }
+
   static Future<void> updateCollectionType(int subjectId, int type) async {
     final bangumiType = _mapCollectTypeToBangumi(type);
     if (bangumiType == null) {
@@ -106,6 +131,16 @@ class BangumiHTTP {
       data: {'type': bangumiType},
       options: _authOptions(),
       extra: {'customError': 'Bangumi 收藏同步失败'},
+      shouldRethrow: true,
+    );
+  }
+
+  static Future<void> updateUserRating(int subjectId, int rating) async {
+    await Request().patch(
+      Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiMyCollection, [subjectId]),
+      data: {'rate': rating},
+      options: _authOptions(),
+      extra: {'customError': 'Bangumi 评分更新失败'},
       shouldRethrow: true,
     );
   }

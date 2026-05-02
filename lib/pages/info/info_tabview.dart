@@ -184,34 +184,50 @@ class _InfoTabViewState extends State<InfoTabView>
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         const SizedBox(height: 16),
-        Text('相关番剧', style: TextStyle(fontSize: 18)),
-        const SizedBox(height: 8),
+        Row(
+          children: [
+            Icon(
+              Icons.link_rounded,
+              size: 20,
+              color: Theme.of(context).colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              '相关番剧',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
         if (widget.relatedSubjectsLoading)
           SizedBox(
-            height: 200,
+            height: 220,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: 4,
               itemBuilder: (context, index) {
                 return Container(
-                  width: 120,
+                  width: 130,
                   margin: const EdgeInsets.only(right: 12),
                   child: Skeletonizer.zone(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Container(
-                          width: 120,
-                          height: 160,
+                          width: 130,
+                          height: 173,
                           decoration: BoxDecoration(
                             color: Theme.of(context)
                                 .colorScheme
                                 .onInverseSurface
                                 .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: 6),
                         Bone.text(width: 80),
                       ],
                     ),
@@ -222,7 +238,7 @@ class _InfoTabViewState extends State<InfoTabView>
           )
         else
           SizedBox(
-            height: 200,
+            height: 220,
             child: ListView.builder(
               scrollDirection: Axis.horizontal,
               itemCount: widget.relatedSubjectList.length,
@@ -259,29 +275,57 @@ class _InfoTabViewState extends State<InfoTabView>
                     Modular.to.pushNamed('/info/', arguments: bangumiItem);
                   },
                   child: Container(
-                    width: 120,
+                    width: 130,
                     margin: const EdgeInsets.only(right: 12),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        NetworkImgLayer(
-                          src: relation.image,
-                          width: 120,
-                          height: 160,
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          relation.relation,
-                          style: TextStyle(
-                            fontSize: 11,
-                            color: Theme.of(context).colorScheme.primary,
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(12),
+                          child: Stack(
+                            children: [
+                              NetworkImgLayer(
+                                src: relation.image,
+                                width: 130,
+                                height: 173,
+                              ),
+                              Positioned(
+                                top: 6,
+                                left: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .primary
+                                        .withValues(alpha: 0.9),
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    relation.relation,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                      color: Theme.of(context)
+                                          .colorScheme
+                                          .onPrimary,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
                         ),
+                        const SizedBox(height: 6),
                         Text(
                           displayName,
-                          style: const TextStyle(fontSize: 13),
+                          style: const TextStyle(
+                            fontSize: 13,
+                            fontWeight: FontWeight.w500,
+                          ),
                           maxLines: 2,
                           overflow: TextOverflow.ellipsis,
                         ),

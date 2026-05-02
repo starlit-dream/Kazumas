@@ -1,0 +1,17 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(flutter build:*)",
+      "Bash(where java:*)",
+      "Bash(java:*)",
+      "Bash(export:*)",
+      "Bash(cd:*)",
+      "WebFetch(domain:github.com)",
+      "WebSearch",
+      "WebFetch(domain:bangumi.github.io)",
+      "Bash(curl:*)",
+      "Bash(for id:*)",
+      "Bash(flutter pub:*)"
+    ]
+  }
+}

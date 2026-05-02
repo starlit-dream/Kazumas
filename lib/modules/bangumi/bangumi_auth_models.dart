@@ -34,12 +34,14 @@ class BangumiSubjectCollection {
   final int subjectId;
   final int type;
   final int epStatus;
+  final int? rate;
   final BangumiAuthCollectionSubject? subject;
 
   const BangumiSubjectCollection({
     required this.subjectId,
     required this.type,
     required this.epStatus,
+    this.rate,
     this.subject,
   });
 
@@ -48,6 +50,7 @@ class BangumiSubjectCollection {
       subjectId: json['subject_id'] ?? 0,
       type: json['type'] ?? 0,
       epStatus: json['ep_status'] ?? 0,
+      rate: json['rate'] as int?,
       subject: json['subject'] is Map<String, dynamic>
           ? BangumiAuthCollectionSubject.fromJson(
               Map<String, dynamic>.from(json['subject']))

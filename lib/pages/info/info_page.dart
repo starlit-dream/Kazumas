@@ -318,8 +318,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                     stretch: true,
                     centerTitle: false,
                     expandedHeight: (Platform.isMacOS && showWindowButton)
-                        ? 308 + kTextTabBarHeight + kToolbarHeight + 22
-                        : 308 + kTextTabBarHeight + kToolbarHeight,
+                        ? 360 + kTextTabBarHeight + kToolbarHeight + 22
+                        : 360 + kTextTabBarHeight + kToolbarHeight,
                     collapsedHeight: (Platform.isMacOS && showWindowButton)
                         ? kTextTabBarHeight +
                             kToolbarHeight +
@@ -386,13 +386,19 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                      child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
-                                        BangumiInfoCardV(
-                                          bangumiItem: infoController.bangumiItem,
-                                          isLoading: infoController.isLoading,
-                                          showRating: showRating,
-                                          onCollectChanged:
-                                              infoController.updateCollectionType,
-                                        ),
+                                        Observer(builder: (context) {
+                                          return BangumiInfoCardV(
+                                            bangumiItem: infoController.bangumiItem,
+                                            isLoading: infoController.isLoading,
+                                            showRating: showRating,
+                                            userRating: infoController.userRating,
+                                            isLoggedIn: BangumiAuth.isLoggedIn,
+                                            onCollectChanged:
+                                                infoController.updateCollectionType,
+                                            onRatingChanged:
+                                                infoController.updateUserRating,
+                                          );
+                                        }),
                                         // 进度条（仅登录态显示）
                                         if (BangumiAuth.isLoggedIn &&
                                             !infoController.isLoading)

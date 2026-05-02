@@ -48,6 +48,9 @@ abstract class _InfoController with Store {
   int syncedCollectType = 0;
 
   @observable
+  int? userRating;
+
+  @observable
   bool episodeProgressLoading = false;
 
   @observable
@@ -91,6 +94,10 @@ abstract class _InfoController with Store {
   Future<void> syncBangumiCollection() async {
     syncedCollectType =
         await collectController.syncBangumiCollectionType(bangumiItem) ?? 0;
+    if (BangumiAuth.isLoggedIn) {
+      final collection = await BangumiHTTP.getUserSubjectCollection(bangumiItem.id);
+      userRating = collection?.rate;
+    }
   }
 
   Future<void> updateCollectionType(int type) async {
@@ -99,6 +106,16 @@ abstract class _InfoController with Store {
       syncedCollectType = collectController.getCollectType(bangumiItem);
     } catch (e) {
       KazumiDialog.showToast(message: 'Bangumi 收藏同步失败 ${e.toString()}');
+    }
+  }
+
+  Future<void> updateUserRating(int rating) async {
+    try {
+      await BangumiHTTP.updateUserRating(bangumiItem.id, rating);
+      userRating = rating;
+      KazumiDialog.showToast(message: '评分已更新');
+    } catch (e) {
+      KazumiDialog.showToast(message: 'Bangumi 评分更新失败 ${e.toString()}');
     }
   }
 
@@ -234,11 +251,47 @@ abstract class _InfoController with Store {
     }
   }
 
+  int _getRelationPriority(String relation) {
+    switch (relation) {
+      case '前传':
+        return 1;
+      case '续集':
+        return 2;
+      case '总集篇':
+        return 3;
+      case '衍生':
+        return 4;
+      case '动画':
+      case '游戏':
+        return 5;
+      case '书籍':
+      case '画集':
+        return 6;
+      case '原声集':
+      case '片头曲':
+      case '片尾曲':
+      case '插入歌':
+      case '角色歌':
+        return 7;
+      case '三次元':
+      case '联动':
+      case '角色出演':
+        return 8;
+      default:
+        return 9;
+    }
+  }
+
   Future<void> queryRelatedSubjects(int subjectId) async {
     if (relatedSubjectsLoading) return;
     relatedSubjectsLoading = true;
     try {
       final relations = await BangumiHTTP.getSubjectRelations(subjectId);
+      relations.sort((a, b) {
+        final priorityA = _getRelationPriority(a.relation);
+        final priorityB = _getRelationPriority(b.relation);
+        return priorityA.compareTo(priorityB);
+      });
       relatedSubjectList.clear();
       relatedSubjectList.addAll(relations);
       KazumiLogger().i(
