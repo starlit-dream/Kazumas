@@ -128,6 +128,7 @@ class _CollectButtonState extends State<CollectButton> {
         (int index) => MenuItemButton(
           onPressed: () async {
             if (index != collectType && mounted) {
+<<<<<<< HEAD
               if (widget.onCollectChanged != null) {
                 await widget.onCollectChanged!(index);
               } else {
@@ -136,6 +137,14 @@ class _CollectButtonState extends State<CollectButton> {
               if (mounted) {
                 setState(() {});
               }
+=======
+              await collectController.addCollect(widget.bangumiItem, type: index);
+              // 防止状态错误刷新
+              if (!mounted) {
+                return;
+              }
+              setState(() {});
+>>>>>>> 2.0.9
             }
           },
           child: Container(
