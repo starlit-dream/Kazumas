@@ -472,5 +472,8 @@ class SettingBoxKey {
       shortcutDialogShown = 'shortcutDialogShown',
       bangumiSyncEnable = 'bangumiSyncEnable',
       bangumiSyncPriority = 'bangumiSyncPriority',
-      bangumiImmediateSyncToastEnable = 'bangumiImmediateSyncToastEnable';
+      bangumiImmediateSyncToastEnable = 'bangumiImmediateSyncToastEnable',
+      watchedPopupEnabled = 'watchedPopupEnabled',
+      watchedAutoRecord = 'watchedAutoRecord',
+      watchedAutoRecordThreshold = 'watchedAutoRecordThreshold';
 }

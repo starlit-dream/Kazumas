@@ -22,6 +22,9 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
   bool isVerifying = false;
   late bool bangumiImmediateSyncToastEnable;
   late int syncPriority;
+  late bool watchedPopupEnabled;
+  late bool watchedAutoRecord;
+  late double watchedAutoRecordThreshold;
   bool syncCollectiblesing = false;
   final MenuController syncPriorityMenuController = MenuController();
 
@@ -36,6 +39,12 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
     );
     syncPriority =
         setting.get(SettingBoxKey.bangumiSyncPriority, defaultValue: 0);
+    watchedPopupEnabled =
+        setting.get(SettingBoxKey.watchedPopupEnabled, defaultValue: true);
+    watchedAutoRecord =
+        setting.get(SettingBoxKey.watchedAutoRecord, defaultValue: false);
+    watchedAutoRecordThreshold =
+        setting.get(SettingBoxKey.watchedAutoRecordThreshold, defaultValue: 0.9);
   }
 
   @override
@@ -234,6 +243,97 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                                           ),
                                         )))
                             ]),
+                      ),
+                      SettingsTile.switchTile(
+                        onToggle: (value) async {
+                          watchedPopupEnabled =
+                              value ?? !watchedPopupEnabled;
+                          await setting.put(
+                            SettingBoxKey.watchedPopupEnabled,
+                            watchedPopupEnabled,
+                          );
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        },
+                        title: Text('观看进度弹窗',
+                            style: TextStyle(fontFamily: fontFamily)),
+                        description: Text('播放进度达到阈值时在播放器侧边弹出确认窗口', style: TextStyle(fontFamily: fontFamily)),
+                        initialValue: watchedPopupEnabled,
+                      ),
+                      SettingsTile.switchTile(
+                        onToggle: (value) async {
+                          watchedAutoRecord =
+                              value ?? !watchedAutoRecord;
+                          await setting.put(
+                            SettingBoxKey.watchedAutoRecord,
+                            watchedAutoRecord,
+                          );
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        },
+                        title: Text('自动记录已看过',
+                            style: TextStyle(fontFamily: fontFamily)),
+                        description: Text('播放进度达到阈值后自动标记为已看过', style: TextStyle(fontFamily: fontFamily)),
+                        initialValue: watchedAutoRecord,
+                      ),
+                      SettingsTile.navigation(
+                        onPressed: (_) async {
+                          final result = await showDialog<double>(
+                            context: context,
+                            builder: (context) {
+                              double sliderValue = watchedAutoRecordThreshold * 100;
+                              return StatefulBuilder(
+                                builder: (context, setDialogState) {
+                                  return AlertDialog(
+                                    title: const Text('自动记录进度阈值'),
+                                    content: Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Text('播放到 ${sliderValue.round()}% 时触发'),
+                                        const SizedBox(height: 16),
+                                        Slider(
+                                          value: sliderValue,
+                                          min: 50,
+                                          max: 100,
+                                          divisions: 10,
+                                          label: '${sliderValue.round()}%',
+                                          onChanged: (value) {
+                                            setDialogState(() {
+                                              sliderValue = value;
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ),
+                                    actions: [
+                                      TextButton(
+                                        onPressed: () => Navigator.of(context).pop(null),
+                                        child: const Text('取消'),
+                                      ),
+                                      TextButton(
+                                        onPressed: () => Navigator.of(context).pop(sliderValue / 100),
+                                        child: const Text('确认'),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              );
+                            },
+                          );
+                          if (result != null) {
+                            watchedAutoRecordThreshold = result;
+                            await setting.put(
+                              SettingBoxKey.watchedAutoRecordThreshold,
+                              watchedAutoRecordThreshold,
+                            );
+                            if (mounted) setState(() {});
+                          }
+                        },
+                        title: Text('自动记录进度阈值',
+                            style: TextStyle(fontFamily: fontFamily)),
+                        description: Text('播放进度达到 ${(watchedAutoRecordThreshold * 100).round()}% 时自动标记为已看过', style: TextStyle(fontFamily: fontFamily)),
                       ),
                       SettingsTile(
                         trailing: syncCollectiblesing
