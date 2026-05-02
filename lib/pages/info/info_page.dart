@@ -287,6 +287,15 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                       ),
                     ),
                     actions: [
+                      if (innerBoxIsScrolled)
+                        EmbeddedNativeControlArea(
+                          child: CollectButton(
+                            bangumiItem: infoController.bangumiItem,
+                            onCollectChanged: infoController.updateCollectionType,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
                       EmbeddedNativeControlArea(
                         child: IconButton(
                           onPressed: () {

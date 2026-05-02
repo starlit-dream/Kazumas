@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
+import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/modules/bangumi/sync_priority.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
@@ -388,6 +389,7 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
     final userName = BangumiAuth.nickname.isNotEmpty
         ? BangumiAuth.nickname
         : (BangumiAuth.username.isNotEmpty ? BangumiAuth.username : '未登录');
+    final avatarUrl = BangumiAuth.avatar;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -397,15 +399,19 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
               radius: 22,
               backgroundColor:
                   Theme.of(context).colorScheme.primaryContainer,
-              backgroundImage: BangumiAuth.avatar.isNotEmpty
-                  ? NetworkImage(BangumiAuth.avatar)
-                  : null,
-              child: BangumiAuth.avatar.isEmpty
-                  ? Icon(
+              child: avatarUrl.isNotEmpty
+                  ? ClipRRect(
+                      borderRadius: BorderRadius.circular(22),
+                      child: NetworkImgLayer(
+                        src: avatarUrl,
+                        width: 44,
+                        height: 44,
+                      ),
+                    )
+                  : Icon(
                       Icons.person_rounded,
                       color: Theme.of(context).colorScheme.onPrimaryContainer,
-                    )
-                  : null,
+                    ),
             ),
             const SizedBox(width: 12),
             Expanded(
