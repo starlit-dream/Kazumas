@@ -55,12 +55,21 @@ jobs:
       - name: Build Flutter for Android
         run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.8 --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
+      - name: Sign APKs
+        uses: filippoLeporati93/android-release-signer@v1
+        with:
+          releaseDirectory: build/app/outputs/flutter-apk
+          signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
       - name: Package android build output
         run: |
           ls build/app/outputs/flutter-apk/
-          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk  Kazumi_android_armeabi-v7a_canary_${{ github.sha }}.apk
-          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk    Kazumi_android_arm64-v8a_canary_${{ github.sha }}.apk
-          cp build/app/outputs/flutter-apk/app-x86_64-release.apk      Kazumi_android_x86_64_canary_${{ github.sha }}.apk
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release-signed.apk  Kazumi_android_armeabi-v7a_canary_${{ github.sha }}.apk
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release-signed.apk    Kazumi_android_arm64-v8a_canary_${{ github.sha }}.apk
+          cp build/app/outputs/flutter-apk/app-x86_64-release-signed.apk      Kazumi_android_x86_64_canary_${{ github.sha }}.apk
         shell: bash
       - name: Upload android outputs
         uses: actions/upload-artifact@v4
