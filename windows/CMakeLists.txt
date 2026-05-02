@@ -1,13 +1,10 @@
 # Project-level configuration.
-cmake_minimum_required(VERSION 3.10)
-if(POLICY CMP0175)
-  cmake_policy(SET CMP0175 OLD)
-endif()
-project(kazumas LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.14)
+project(kazumi LANGUAGES CXX)
 
 # The name of the executable created for the application. Change this to change
 # the on-disk name of your application.
-set(BINARY_NAME "kazumas")
+set(BINARY_NAME "kazumi")
 
 # Explicitly opt in to modern CMake behaviors to avoid warnings with recent
 # versions of CMake.
@@ -69,8 +66,7 @@ set(BUILD_BUNDLE_DIR "$<TARGET_FILE_DIR:${BINARY_NAME}>")
 # Make the "install" step default, as it's required to run.
 set(CMAKE_VS_INCLUDE_INSTALL_TO_DEFAULT_BUILD 1)
 if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
-  # Use a path that works at configure time for multi-config generators
-  set(CMAKE_INSTALL_PREFIX "${CMAKE_BINARY_DIR}/runner/$<CONFIG>" CACHE PATH "..." FORCE)
+  set(CMAKE_INSTALL_PREFIX "${BUILD_BUNDLE_DIR}" CACHE PATH "..." FORCE)
 endif()
 
 set(INSTALL_BUNDLE_DATA_DIR "${CMAKE_INSTALL_PREFIX}/data")

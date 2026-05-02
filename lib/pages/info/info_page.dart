@@ -5,8 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
 import 'package:kazumi/bean/widget/embedded_native_control_area.dart';
-import 'package:kazumi/bean/widget/progress_editor.dart';
-import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:kazumi/utils/constants.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:kazumi/pages/info/info_controller.dart';
@@ -156,16 +154,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
         infoController.bangumiItem.votesCount.isEmpty) {
       queryBangumiInfoByID(infoController.bangumiItem.id, type: 'attach');
     }
-    infoController.syncBangumiCollection().then((_) {
-      if (mounted) {
-        setState(() {});
-      }
-    });
-    infoController.queryRelatedSubjects(infoController.bangumiItem.id);
-    if (BangumiAuth.isLoggedIn) {
-      infoController.queryEpisodeProgress(infoController.bangumiItem.id);
-      infoController.queryBangumiEpisodes(infoController.bangumiItem.id);
-    }
     sourceTabController =
         TabController(length: pluginsController.pluginList.length, vsync: this);
     infoTabController = TabController(length: 5, vsync: this);
@@ -206,34 +194,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     sourceTabController.dispose();
     infoTabController.dispose();
     super.dispose();
-  }
-
-  void _showProgressEditor() {
-    showModalBottomSheet(
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: (MediaQuery.sizeOf(context).height >=
-                LayoutBreakpoint.compact['height']!)
-            ? MediaQuery.of(context).size.height * 3 / 4
-            : MediaQuery.of(context).size.height,
-        maxWidth: (MediaQuery.sizeOf(context).width >=
-                LayoutBreakpoint.medium['width']!)
-            ? MediaQuery.of(context).size.width * 9 / 16
-            : MediaQuery.of(context).size.width,
-      ),
-      clipBehavior: Clip.antiAlias,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      showDragHandle: true,
-      context: context,
-      builder: (context) {
-        return ProgressEditor(
-          infoController: infoController,
-          episodeList: infoController.bangumiEpisodeList.toList(),
-        );
-      },
-    ).whenComplete(() {
-      if (mounted) setState(() {});
-    });
   }
 
   Future<void> queryBangumiInfoByID(int id, {String type = "init"}) async {
@@ -291,7 +251,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                         EmbeddedNativeControlArea(
                           child: CollectButton(
                             bangumiItem: infoController.bangumiItem,
-                            onCollectChanged: infoController.updateCollectionType,
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
@@ -318,8 +277,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                     stretch: true,
                     centerTitle: false,
                     expandedHeight: (Platform.isMacOS && showWindowButton)
-                        ? 360 + kTextTabBarHeight + kToolbarHeight + 22
-                        : 360 + kTextTabBarHeight + kToolbarHeight,
+                        ? 308 + kTextTabBarHeight + kToolbarHeight + 22
+                        : 308 + kTextTabBarHeight + kToolbarHeight,
                     collapsedHeight: (Platform.isMacOS && showWindowButton)
                         ? kTextTabBarHeight +
                             kToolbarHeight +
@@ -375,7 +334,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                   ),
                                 ),
                               ),
-                             SafeArea(
+                            SafeArea(
                               bottom: false,
                               child: EmbeddedNativeControlArea(
                                 child: Align(
@@ -383,155 +342,10 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                   child: Padding(
                                     padding: const EdgeInsets.fromLTRB(
                                         16, kToolbarHeight, 16, 0),
-                                     child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Observer(builder: (context) {
-                                          return BangumiInfoCardV(
-                                            bangumiItem: infoController.bangumiItem,
-                                            isLoading: infoController.isLoading,
-                                            showRating: showRating,
-                                            userRating: infoController.userRating,
-                                            isLoggedIn: BangumiAuth.isLoggedIn,
-                                            onCollectChanged:
-                                                infoController.updateCollectionType,
-                                            onRatingChanged:
-                                                infoController.updateUserRating,
-                                          );
-                                        }),
-                                        // 进度条（仅登录态显示）
-                                        if (BangumiAuth.isLoggedIn &&
-                                            !infoController.isLoading)
-                                          Observer(builder: (context) {
-                                            final total = infoController
-                                                    .episodeProgressTotal >
-                                                0
-                                                ? infoController
-                                                    .episodeProgressTotal
-                                                : 1;
-                                            final watched = infoController
-                                                .episodeProgressWatched;
-                                            final progress = watched / total;
-                                            return Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 8),
-                                              child: SizedBox(
-                                                width: MediaQuery.of(context)
-                                                            .size
-                                                            .width >
-                                                        950
-                                                    ? 950
-                                                    : MediaQuery.of(context)
-                                                            .size
-                                                            .width -
-                                                        32,
-                                                child: GestureDetector(
-                                                  onTap: () =>
-                                                      _showProgressEditor(),
-                                                  child: Card(
-                                                    elevation: 0,
-                                                    color: Theme.of(context)
-                                                        .colorScheme
-                                                        .surfaceContainerHighest
-                                                        .withValues(
-                                                            alpha: 0.6),
-                                                    child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                              horizontal: 16,
-                                                              vertical: 10),
-                                                      child: Row(
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .play_circle_outline,
-                                                            size: 20,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .primary,
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                            child: Column(
-                                                              crossAxisAlignment:
-                                                                  CrossAxisAlignment
-                                                                      .start,
-                                                              mainAxisSize:
-                                                                  MainAxisSize
-                                                                      .min,
-                                                              children: [
-                                                                Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .spaceBetween,
-                                                                  children: [
-                                                                    Text(
-                                                                      '观看进度',
-                                                                      style: TextStyle(
-                                                                        fontSize:
-                                                                            13,
-                                                                        color: Theme.of(
-                                                                                context)
-                                                                            .colorScheme
-                                                                            .onSurfaceVariant,
-                                                                      ),
-                                                                    ),
-                                                                    Text(
-                                                                      '$watched / $total',
-                                                                      style: TextStyle(
-                                                                        fontSize:
-                                                                            12,
-                                                                        fontWeight:
-                                                                            FontWeight.w600,
-                                                                        color: Theme.of(
-                                                                                context)
-                                                                            .colorScheme
-                                                                            .primary,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                                const SizedBox(
-                                                                    height: 4),
-                                                                ClipRRect(
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              3),
-                                                                  child: LinearProgressIndicator(
-                                                                    value: progress,
-                                                                    minHeight: 4,
-                                                                    backgroundColor:
-                                                                        Theme.of(context)
-                                                                            .colorScheme
-                                                                            .surfaceContainerHighest,
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Icon(
-                                                            Icons
-                                                                .chevron_right,
-                                                            size: 18,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }),
-                                      ],
+                                    child: BangumiInfoCardV(
+                                      bangumiItem: infoController.bangumiItem,
+                                      isLoading: infoController.isLoading,
+                                      showRating: showRating,
                                     ),
                                   ),
                                 ),
@@ -570,8 +384,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                 characterList: infoController.characterList,
                 staffList: infoController.staffList,
                 isLoading: infoController.isLoading,
-                relatedSubjectList: infoController.relatedSubjectList,
-                relatedSubjectsLoading: infoController.relatedSubjectsLoading,
               );
             }),
           ),

@@ -218,12 +218,15 @@ class Utils {
   static bool needUpdate(localVersion, remoteVersion) {
     List<String> localVersionList = localVersion.split('.');
     List<String> remoteVersionList = remoteVersion.split('.');
-    for (int i = 0; i < localVersionList.length; i++) {
-      int localVersion = int.parse(localVersionList[i]);
-      int remoteVersion = int.parse(remoteVersionList[i]);
-      if (remoteVersion > localVersion) {
+    final maxLength = max(localVersionList.length, remoteVersionList.length);
+    for (int i = 0; i < maxLength; i++) {
+      final int localSegment =
+          i < localVersionList.length ? int.parse(localVersionList[i]) : 0;
+      final int remoteSegment =
+          i < remoteVersionList.length ? int.parse(remoteVersionList[i]) : 0;
+      if (remoteSegment > localSegment) {
         return true;
-      } else if (remoteVersion < localVersion) {
+      } else if (remoteSegment < localSegment) {
         return false;
       }
     }
@@ -265,6 +268,16 @@ class Utils {
       return "$hours:$minutes:$seconds";
     }
   }
+
+  /// 格式化相似度为百分比字符串，默认为1位小数，空值时返回 `--`
+  static String formatTraceSimilarity(double? similarity,
+      {int fractionDigits = 1, String empty = '--'}) {
+    if (similarity == null) {
+      return empty;
+    }
+    return '${(similarity * 100).toStringAsFixed(fractionDigits)}%';
+  }
+
 
   static Future<String> latest() async {
     try {
@@ -454,7 +467,7 @@ class Utils {
   /// 判断是否分屏模式 (android only)
   static Future<bool> isInMultiWindowMode() async {
     if (Platform.isAndroid) {
-    const platform = MethodChannel('com.starlitdream.kazumas/intent');
+      const platform = MethodChannel('com.predidit.kazumi/intent');
       try {
         final bool result =
             await platform.invokeMethod('checkIfInMultiWindowMode');
@@ -470,7 +483,7 @@ class Utils {
   /// 判定是否运行在X11环境下 (Linux only)
   static Future<bool> isRunningOnX11() async {
     if (Platform.isLinux) {
-    const platform = MethodChannel('com.starlitdream.kazumas/intent');
+      const platform = MethodChannel('com.predidit.kazumi/intent');
       try {
         final bool result = await platform.invokeMethod('isRunningOnX11');
         return result;
@@ -485,7 +498,7 @@ class Utils {
   // Deprecated
   static Future<void> enterWindowsFullscreen() async {
     if (Platform.isWindows) {
-    const platform = MethodChannel('com.starlitdream.kazumas/intent');
+      const platform = MethodChannel('com.predidit.kazumi/intent');
       try {
         await platform.invokeMethod('enterFullscreen');
       } on PlatformException catch (e) {
@@ -497,7 +510,7 @@ class Utils {
   // Deprecated
   static Future<void> exitWindowsFullscreen() async {
     if (Platform.isWindows) {
-    const platform = MethodChannel('com.starlitdream.kazumas/intent');
+      const platform = MethodChannel('com.predidit.kazumi/intent');
       try {
         await platform.invokeMethod('exitFullscreen');
       } on PlatformException catch (e) {
@@ -533,7 +546,7 @@ class Utils {
 
   static Future<int> getAndroidSdkVersion() async {
     if (Platform.isAndroid) {
-    const platform = MethodChannel('com.starlitdream.kazumas/intent');
+      const platform = MethodChannel('com.predidit.kazumi/intent');
       try {
         final int sdkVersion =
             await platform.invokeMethod('getAndroidSdkVersion');
@@ -558,7 +571,7 @@ class Utils {
     try {
       if (Platform.isAndroid || Platform.isIOS) {
         if (Platform.isAndroid) {
-    const platform = MethodChannel('com.starlitdream.kazumas/intent');
+          const platform = MethodChannel('com.predidit.kazumi/intent');
           try {
             final int sdkVersion =
                 await platform.invokeMethod('getAndroidSdkVersion');
@@ -679,7 +692,7 @@ class Utils {
   /// 销毁播放器菜单
   static Future<void> disposePlayerMenu() async {
     if (!Platform.isMacOS) return; //暂时只适配macOS
-    const MethodChannel appmenu = MethodChannel("com.starlitdream.kazumas/appmenu");
+    const MethodChannel appmenu = MethodChannel("com.predidit.kazumi/appmenu");
     await appmenu.invokeMethod("setMenuEnabled", {
       "menu": "PlayerMenu",
       "enable": false,
@@ -690,7 +703,7 @@ class Utils {
   static Future<void> initPlayerMenu(
       Map<String, void Function()> actions) async {
     if (!Platform.isMacOS) return; //暂时只适配macOS
-    const MethodChannel appmenu = MethodChannel("com.starlitdream.kazumas/appmenu");
+    const MethodChannel appmenu = MethodChannel("com.predidit.kazumi/appmenu");
     await appmenu.invokeMethod("setMenuEnabled", {
       "menu": "PlayerMenu",
       "enable": true,

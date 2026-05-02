@@ -14,19 +14,11 @@ class BangumiInfoCardV extends StatefulWidget {
     required this.bangumiItem,
     required this.isLoading,
     required this.showRating,
-    this.userRating,
-    this.isLoggedIn = false,
-    this.onCollectChanged,
-    this.onRatingChanged,
   });
 
   final BangumiItem bangumiItem;
   final bool isLoading;
   final bool showRating;
-  final int? userRating;
-  final bool isLoggedIn;
-  final Future<void> Function(int type)? onCollectChanged;
-  final Future<void> Function(int rating)? onRatingChanged;
 
   @override
   State<BangumiInfoCardV> createState() => _BangumiInfoCardVState();
@@ -34,75 +26,6 @@ class BangumiInfoCardV extends StatefulWidget {
 
 class _BangumiInfoCardVState extends State<BangumiInfoCardV> {
   int touchedIndex = -1;
-
-  void _showRatingDialog(BuildContext context) {
-    double currentRating = (widget.userRating ?? 0).toDouble();
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('修改评分'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              '为《${widget.bangumiItem.nameCn.isNotEmpty ? widget.bangumiItem.nameCn : widget.bangumiItem.name}》评分',
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            const SizedBox(height: 24),
-            StatefulBuilder(
-              builder: (context, setState) {
-                return Column(
-                  children: [
-                    Text(
-                      '${currentRating.toInt()}',
-                      style: TextStyle(
-                        fontSize: 32,
-                        fontWeight: FontWeight.bold,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    RatingBar.builder(
-                      initialRating: currentRating / 2,
-                      minRating: 0.5,
-                      direction: Axis.horizontal,
-                      allowHalfRating: true,
-                      itemCount: 5,
-                      itemSize: 40,
-                      itemBuilder: (context, _) => Icon(
-                        Icons.star_rounded,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      onRatingUpdate: (rating) {
-                        setState(() {
-                          currentRating = rating * 2;
-                        });
-                      },
-                    ),
-                  ],
-                );
-              },
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: Text('取消'),
-          ),
-          FilledButton(
-            onPressed: () {
-              if (widget.onRatingChanged != null) {
-                widget.onRatingChanged!(currentRating.toInt());
-              }
-              Navigator.of(context).pop();
-            },
-            child: Text('确定'),
-          ),
-        ],
-      ),
-    );
-  }
 
   Widget get voteBarChart {
     return Flexible(
@@ -319,65 +242,14 @@ class _BangumiInfoCardVState extends State<BangumiInfoCardV> {
                                 color: Theme.of(context).colorScheme.primary,
                               ),
                             ),
-                            if (widget.isLoggedIn) ...[
-                              SizedBox(height: 8),
-                              if (widget.userRating != null && widget.userRating! > 0) ...[
-                                Text(
-                                  '我的评分:',
-                                ),
-                                GestureDetector(
-                                  onTap: () => _showRatingDialog(context),
-                                  child: Row(
-                                    children: [
-                                      Text(
-                                        '${widget.userRating}',
-                                        style: TextStyle(
-                                          fontSize: 20,
-                                          fontWeight: FontWeight.bold,
-                                          color: Theme.of(context).colorScheme.secondary,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 8),
-                                      RatingBarIndicator(
-                                        itemCount: 5,
-                                        rating: widget.userRating!.toDouble() / 2,
-                                        itemBuilder: (context, index) => Icon(
-                                          Icons.star_rounded,
-                                          color: Theme.of(context).colorScheme.secondary,
-                                        ),
-                                        itemSize: 20.0,
-                                      ),
-                                      const SizedBox(width: 4),
-                                      Icon(
-                                        Icons.edit_rounded,
-                                        size: 16,
-                                        color: Theme.of(context).colorScheme.secondary,
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ] else ...[
-                                TextButton.icon(
-                                  onPressed: () => _showRatingDialog(context),
-                                  icon: Icon(Icons.star_border_rounded, size: 18),
-                                  label: Text('添加评分'),
-                                  style: TextButton.styleFrom(
-                                    padding: EdgeInsets.zero,
-                                    minimumSize: Size(0, 32),
-                                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                                  ),
-                                ),
-                              ],
-                            ],
                           ],
                         ),
                         SizedBox(
                           width: 120,
                           height: 40,
-                           child: CollectButton.extend(
-                             bangumiItem: widget.bangumiItem,
-                             onCollectChanged: widget.onCollectChanged,
-                           ),
+                          child: CollectButton.extend(
+                            bangumiItem: widget.bangumiItem,
+                          ),
                         ),
                       ],
                     ),

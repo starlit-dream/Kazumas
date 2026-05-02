@@ -32,8 +32,6 @@ import 'package:mobx/mobx.dart' as mobx;
 import 'package:kazumi/pages/my/my_controller.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 import 'package:kazumi/utils/audio_controller.dart';
-import 'package:kazumi/utils/bangumi_auth.dart';
-import 'package:kazumi/request/bangumi.dart';
 
 class PlayerItem extends StatefulWidget {
   const PlayerItem({
@@ -114,8 +112,6 @@ class _PlayerItemState extends State<PlayerItem>
   late bool haEnable;
   late bool autoPlayNext;
   late bool backgroundPlayback;
-  bool _episodeWatchedReported = false;
-  bool _episodeStateSyncing = false;
 
   Timer? hideTimer;
   Timer? playerTimer;
@@ -131,6 +127,7 @@ class _PlayerItemState extends State<PlayerItem>
   int episodeNum = 0;
   bool? _lastPipPlaying;
   bool? _lastPipDanmakuEnabled;
+  late mobx.ReactionDisposer _playerSizeListener;
 
   late mobx.ReactionDisposer _fullscreenListener;
 
@@ -203,7 +200,26 @@ class _PlayerItemState extends State<PlayerItem>
     await PipUtils.updateAndroidPIPActions(
       playing: playing,
       danmakuEnabled: danmakuEnabled,
+      width: playerController.playerWidth,
+      height: playerController.playerHeight,
     );
+  }
+
+  Future<void> _syncPIPAspectWhenVideoSizeReady() async {
+    if (playerController.playerWidth <= 0 ||
+        playerController.playerHeight <= 0) {
+      return;
+    }
+    if (Platform.isAndroid) {
+      await _updateAndroidPIPActions(force: true);
+      return;
+    }
+    if (Utils.isDesktop() && videoPageController.isPip) {
+      await PipUtils.enterDesktopPIPWindow(
+        width: playerController.playerWidth,
+        height: playerController.playerHeight,
+      );
+    }
   }
 
   void _loadShortcuts() {
@@ -253,35 +269,6 @@ class _PlayerItemState extends State<PlayerItem>
   //销毁播放器菜单
   void _disposePlayerMenu() {
     Utils.disposePlayerMenu();
-  }
-
-  Future<void> _syncBangumiProgressStateForCurrentEpisode() async {
-    if (_episodeStateSyncing ||
-        !BangumiAuth.isLoggedIn ||
-        videoPageController.isOfflineMode) {
-      return;
-    }
-    _episodeStateSyncing = true;
-    try {
-      await collectController
-          .syncBangumiCollectionType(videoPageController.bangumiItem);
-      final episodeInfo = await BangumiHTTP.getBangumiEpisodeByID(
-        videoPageController.bangumiItem.id,
-        videoPageController.actualEpisodeNumber,
-      );
-      if (episodeInfo.id == 0) {
-        return;
-      }
-      final remoteEpisodeType =
-          await BangumiHTTP.getEpisodeCollectionType(episodeInfo.id);
-      if (remoteEpisodeType == 2) {
-        _episodeWatchedReported = true;
-      }
-    } catch (e) {
-      KazumiLogger().w('Bangumi: failed to sync episode progress state', error: e);
-    } finally {
-      _episodeStateSyncing = false;
-    }
   }
 
   //快捷键按下
@@ -829,11 +816,6 @@ class _PlayerItemState extends State<PlayerItem>
 
   Timer getPlayerTimer() {
     return Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (episodeNum != videoPageController.actualEpisodeNumber) {
-        episodeNum = videoPageController.actualEpisodeNumber;
-        _episodeWatchedReported = false;
-        unawaited(_syncBangumiProgressStateForCurrentEpisode());
-      }
       playerController.playing = playerController.playerPlaying;
       playerController.isBuffering = playerController.playerBuffering;
       playerController.currentPosition = playerController.playerPosition;
@@ -925,37 +907,6 @@ class _PlayerItemState extends State<PlayerItem>
               videoPageController.roadList[videoPageController.currentRoad]
                   .identifier[videoPageController.currentEpisode - 1]);
         }
-      }
-      final totalSeconds = playerController.duration.inSeconds;
-      final watchedSeconds = playerController.currentPosition.inSeconds;
-      final currentCollectType =
-          collectController.getCollectType(videoPageController.bangumiItem);
-      if (!_episodeWatchedReported &&
-          BangumiAuth.isLoggedIn &&
-          !videoPageController.isOfflineMode &&
-          currentCollectType == 1 &&
-          totalSeconds > 0 &&
-          watchedSeconds / totalSeconds >= 0.9) {
-        _episodeWatchedReported = true;
-        unawaited(() async {
-          try {
-            final episodeInfo = await BangumiHTTP.getBangumiEpisodeByID(
-              videoPageController.bangumiItem.id,
-              videoPageController.actualEpisodeNumber,
-            );
-            if (episodeInfo.id == 0) {
-              return;
-            }
-            await collectController.markEpisodeWatchedIfNeeded(
-              bangumiItem: videoPageController.bangumiItem,
-              subjectId: videoPageController.bangumiItem.id,
-              episodeId: episodeInfo.id,
-            );
-          } catch (e) {
-            _episodeWatchedReported = false;
-            KazumiLogger().w('Bangumi: failed to sync watched episode', error: e);
-          }
-        }());
       }
       // 自动播放下一集
       if (playerController.completed &&
@@ -1524,6 +1475,12 @@ class _PlayerItemState extends State<PlayerItem>
         _handleFullscreenChange(context);
       },
     );
+    _playerSizeListener = mobx.reaction<String>(
+      (_) => '${playerController.playerWidth}:${playerController.playerHeight}',
+      (_) {
+        unawaited(_syncPIPAspectWhenVideoSizeReady());
+      },
+    );
     if (Platform.isAndroid) {
       PipUtils.initPipHandler(
         onAction: (action) async {
@@ -1592,9 +1549,6 @@ class _PlayerItemState extends State<PlayerItem>
     autoPlayNext = setting.get(SettingBoxKey.autoPlayNext, defaultValue: true);
     backgroundPlayback =
         setting.get(SettingBoxKey.backgroundPlayback, defaultValue: false);
-    episodeNum = videoPageController.actualEpisodeNumber;
-    _episodeWatchedReported = false;
-    unawaited(_syncBangumiProgressStateForCurrentEpisode());
     unawaited(_bindAudioService());
     playerTimer = getPlayerTimer();
     windowManager.addListener(this);
@@ -1607,6 +1561,7 @@ class _PlayerItemState extends State<PlayerItem>
     // We need to reuse the player after episode is changed and player item is disposed
     // We dispose player after video page disposed
     _fullscreenListener();
+    _playerSizeListener();
     WidgetsBinding.instance.removeObserver(this);
     windowManager.removeListener(this);
     playerTimer?.cancel();
@@ -1676,7 +1631,7 @@ class _PlayerItemState extends State<PlayerItem>
                   }
                 },
                 child: SizedBox(
-                  height: videoPageController.isFullscreen
+                  height: videoPageController.isFullscreen || videoPageController.isPip
                       ? (MediaQuery.of(context).size.height)
                       : (MediaQuery.of(context).size.width * 9.0 / (16.0)),
                   width: MediaQuery.of(context).size.width,
@@ -1754,7 +1709,7 @@ class _PlayerItemState extends State<PlayerItem>
                       top: 0,
                       left: 0,
                       right: 0,
-                      height: videoPageController.isFullscreen
+                      height: videoPageController.isFullscreen || videoPageController.isPip
                           ? MediaQuery.sizeOf(context).height
                           : (MediaQuery.sizeOf(context).width * 9 / 16),
                       child: DanmakuScreen(

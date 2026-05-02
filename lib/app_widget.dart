@@ -102,7 +102,7 @@ class _AppWidgetState extends State<AppWidget>
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-          const Text('您想要退出 Kazumas 吗？'),
+                const Text('您想要退出 Kazumi 吗？'),
                 const SizedBox(height: 24),
                 StatefulBuilder(builder: (context, setState) {
                   onChanged(value) {
@@ -129,7 +129,7 @@ class _AppWidgetState extends State<AppWidget>
                     }
                     exit(0);
                   },
-                child: const Text('退出 Kazumas')),
+                  child: const Text('退出 Kazumi')),
               TextButton(
                   onPressed: () async {
                     if (saveExitBehavior) {
@@ -184,19 +184,19 @@ class _AppWidgetState extends State<AppWidget>
       await trayManager.setIcon('assets/images/logo/logo_lanczos.ico');
     } else if (Platform.environment.containsKey('FLATPAK_ID') ||
         Platform.environment.containsKey('SNAP')) {
-      await trayManager.setIcon('io.github.starlitdream.Kazumas');
+      await trayManager.setIcon('io.github.Predidit.Kazumi');
     } else {
       await trayManager.setIcon('assets/images/logo/logo_rounded.png');
     }
 
     if (!Platform.isLinux) {
-      await trayManager.setToolTip('Kazumas');
+      await trayManager.setToolTip('Kazumi');
     }
 
     Menu trayMenu = Menu(items: [
       MenuItem(key: 'show_window', label: '显示窗口'),
       MenuItem.separator(),
-        MenuItem(key: 'exit', label: '退出 Kazumas')
+      MenuItem(key: 'exit', label: '退出 Kazumi')
     ]);
     await trayManager.setContextMenu(trayMenu);
   }
@@ -291,7 +291,7 @@ class _AppWidgetState extends State<AppWidget>
           );
         }
         return MaterialApp.router(
-      title: "Kazumas",
+          title: "Kazumi",
           localizationsDelegates: GlobalMaterialLocalizations.delegates,
           supportedLocales: const [
             Locale.fromSubtags(

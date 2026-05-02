@@ -16,7 +16,7 @@ import AVKit
         GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
 
         let channel = FlutterMethodChannel(
-            name: "com.starlitdream.kazumas/intent",
+            name: "com.predidit.kazumi/intent",
             binaryMessenger: engineBridge.applicationRegistrar.messenger()
         )
         channel.setMethodCallHandler { [weak self] (call: FlutterMethodCall, result: @escaping FlutterResult) in
@@ -34,7 +34,7 @@ import AVKit
         }
 
         let storageChannel = FlutterMethodChannel(
-            name: "com.starlitdream.kazumas/storage",
+            name: "com.predidit.kazumi/storage",
             binaryMessenger: engineBridge.applicationRegistrar.messenger()
         )
         storageChannel.setMethodCallHandler { (call: FlutterMethodCall, result: @escaping FlutterResult) in

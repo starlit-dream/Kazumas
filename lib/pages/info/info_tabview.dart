@@ -5,11 +5,9 @@ import 'package:kazumi/bean/widget/error_widget.dart';
 import 'package:kazumi/bean/card/comments_card.dart';
 import 'package:kazumi/bean/card/character_card.dart';
 import 'package:kazumi/bean/card/staff_card.dart';
-import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/utils/utils.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
-import 'package:kazumi/modules/bangumi/subject_relation.dart';
 import 'package:kazumi/modules/comments/comment_item.dart';
 import 'package:kazumi/modules/characters/character_item.dart';
 import 'package:kazumi/modules/staff/staff_item.dart';
@@ -32,8 +30,6 @@ class InfoTabView extends StatefulWidget {
     required this.characterList,
     required this.staffList,
     required this.isLoading,
-    this.relatedSubjectList = const [],
-    this.relatedSubjectsLoading = false,
   });
 
   final bool commentsQueryTimeout;
@@ -51,8 +47,6 @@ class InfoTabView extends StatefulWidget {
   final List<CharacterItem> characterList;
   final List<StaffFullItem> staffList;
   final bool isLoading;
-  final List<BangumiSubjectRelation> relatedSubjectList;
-  final bool relatedSubjectsLoading;
 
   @override
   State<InfoTabView> createState() => _InfoTabViewState();
@@ -167,176 +161,11 @@ class _InfoTabViewState extends State<InfoTabView>
                     },
                   );
                 }).toList(),
-              ),
-              relatedSubjectsBody,
+              )
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget get relatedSubjectsBody {
-    if (widget.relatedSubjectList.isEmpty && !widget.relatedSubjectsLoading) {
-      return const SizedBox.shrink();
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Icon(
-              Icons.link_rounded,
-              size: 20,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '相关番剧',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (widget.relatedSubjectsLoading)
-          SizedBox(
-            height: 220,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: 4,
-              itemBuilder: (context, index) {
-                return Container(
-                  width: 130,
-                  margin: const EdgeInsets.only(right: 12),
-                  child: Skeletonizer.zone(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 130,
-                          height: 173,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onInverseSurface
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Bone.text(width: 80),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          )
-        else
-          SizedBox(
-            height: 220,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: widget.relatedSubjectList.length,
-              itemBuilder: (context, index) {
-                final relation = widget.relatedSubjectList[index];
-                final displayName = relation.nameCn.isNotEmpty
-                    ? relation.nameCn
-                    : relation.name;
-                return GestureDetector(
-                  onTap: () {
-                    final bangumiItem = BangumiItem(
-                      id: relation.id,
-                      type: relation.type,
-                      name: relation.name,
-                      nameCn: relation.nameCn,
-                      summary: '',
-                      airDate: '',
-                      airWeekday: 0,
-                      rank: 0,
-                      images: {
-                        'large': relation.image,
-                        'common': '',
-                        'medium': '',
-                        'small': '',
-                        'grid': '',
-                      },
-                      tags: [],
-                      alias: [],
-                      ratingScore: 0,
-                      votes: 0,
-                      votesCount: [],
-                      info: '',
-                    );
-                    Modular.to.pushNamed('/info/', arguments: bangumiItem);
-                  },
-                  child: Container(
-                    width: 130,
-                    margin: const EdgeInsets.only(right: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Stack(
-                            children: [
-                              NetworkImgLayer(
-                                src: relation.image,
-                                width: 130,
-                                height: 173,
-                              ),
-                              Positioned(
-                                top: 6,
-                                left: 6,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary
-                                        .withValues(alpha: 0.9),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    relation.relation,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-      ],
     );
   }
 

@@ -58,7 +58,7 @@ class IndexModule extends Module {
           ChildRoute(
             "/error",
             child: (_) => Scaffold(
-          appBar: AppBar(title: const Text("Kazumas")),
+              appBar: AppBar(title: const Text("Kazumi")),
               body: const Center(child: Text("初始化失败")),
             ),
           ),
