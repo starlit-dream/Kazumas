@@ -64,17 +64,20 @@ jobs:
 
           git push -f origin "$SYNC_BRANCH"
 
-          # 构造 PR 描述
-          PR_BODY="自动同步上游 [Predidit/Kazumi]($LATEST_TAG)
+          # 将 PR 描述写入临时文件，避免多行 shell 变量引号问题
+          cat > /tmp/pr_body.md << EOM
+          自动同步上游 [Predidit/Kazumi]($LATEST_TAG)
 
-          由 GitHub Actions 自动创建。这是对上游Predidit/Kazumi最新版本的同步。
+          由 GitHub Actions 自动创建，将同步Predidit/Kazumi的最新版本。
+
+          EOM
 
           if gh pr list --head "$SYNC_BRANCH" --repo starlit-dream/Kazumas | grep -q .; then
             echo "PR already exists for $SYNC_BRANCH"
           else
             gh pr create --repo starlit-dream/Kazumas \
                          --title "Sync upstream ver $LATEST_TAG" \
-                         --body "$PR_BODY" \
+                         --body-file /tmp/pr_body.md \
                          --base main \
                          --head "$SYNC_BRANCH"
           fi
