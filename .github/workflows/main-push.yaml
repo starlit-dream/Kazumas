@@ -53,7 +53,7 @@ jobs:
           sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
           sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
       - name: Build Flutter for Android
-        run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.8 --dart-define=BUILD_COMMIT=${{ github.sha }}
+        run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
       - name: Sign APKs
         uses: filippoLeporati93/android-release-signer@v1
@@ -109,7 +109,7 @@ jobs:
           (Get-Content -Path 'lib/utils/mortis.dart') -replace "rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax", "$env:DANDANAPI_KEY" | Set-Content -Path 'lib/utils/mortis.dart'
           (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_id_placeholder", "$env:BANGUMI_APP_ID" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
           (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_secret_placeholder", "$env:BANGUMI_APP_SECRET" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
-      - run: flutter build windows --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.8 --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - run: flutter build windows --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
       - run: Compress-Archive build/windows/x64/runner/Release/* Kazumi_windows_canary_${{ github.sha }}.zip
       - name: Upload windows outputs
         uses: actions/upload-artifact@v4
@@ -141,7 +141,7 @@ jobs:
         run: |
           flutter build ios --release --no-codesign \
             --dart-define=BRANCH_VERSION=canary \
-            --dart-define=UPSTREAM_VERSION=2.0.8 \
+            --dart-define=UPSTREAM_VERSION=2.0.9 \
             --dart-define=BUILD_COMMIT=${{ github.sha }}
       - name: Create IPA
         run: |
@@ -174,7 +174,7 @@ jobs:
           sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
           sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
           sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
-      - run: flutter build macos --release --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.8 --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - run: flutter build macos --release --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
       - name: Create DMG
         run: |
           npm install --global create-dmg
@@ -229,7 +229,7 @@ jobs:
           sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
           sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
       - name: Build Flutter for Linux
-        run: flutter build linux --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.8 --dart-define=BUILD_COMMIT=${{ github.sha }}
+        run: flutter build linux --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
       - name: Package linux build output
         run: |
