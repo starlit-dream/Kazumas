@@ -52,22 +52,32 @@ jobs:
           git checkout -b "$SYNC_BRANCH" main
 
           if git merge "$LATEST_TAG" --allow-unrelated-histories -m "Sync upstream release $LATEST_TAG"; then
-            echo "Merge complete."
+            echo "Merge succeeded."
           else
-            echo "Merge failed, waiting for check."
-            git add .
-            git commit -m "chore: sync $LATEST_TAG with conflicts" || true
+            # 合并有冲突 → abort，改用覆盖式同步
+            # 把上游 tag 的文件覆盖到分支上，让 GitHub 能检测到文件差异
+            echo "Conflict detected. Applying upstream files directly..."
+            git merge --abort
+            git checkout "$LATEST_TAG" -- .
+            git commit -m "Sync upstream release $LATEST_TAG"
           fi
 
           git push -f origin "$SYNC_BRANCH"
 
-          # 检查是否已存在同分支的PR
+          # 构造 PR 描述
+          PR_BODY="自动同步上游 [Predidit/Kazumi]($LATEST_TAG)
+
+由 GitHub Actions 自动创建。
+
+- 无冲突：正常合并提交
+- 有冲突：直接取 upstream 版本文件覆盖，GitHub 可识别为待解决冲突"
+
           if gh pr list --head "$SYNC_BRANCH" --repo starlit-dream/Kazumas | grep -q .; then
             echo "PR already exists for $SYNC_BRANCH"
           else
             gh pr create --repo starlit-dream/Kazumas \
                          --title "Sync upstream ver $LATEST_TAG" \
-                         --body "zsbd" \
+                         --body "$PR_BODY" \
                          --base main \
                          --head "$SYNC_BRANCH"
           fi
