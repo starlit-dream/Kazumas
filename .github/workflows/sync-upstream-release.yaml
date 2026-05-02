@@ -45,45 +45,29 @@ jobs:
           git fetch upstream --tags
 
           SYNC_BRANCH="sync-upstream-$LATEST_TAG"
-          # 删除本地同名分支（如果存在）
           if git show-ref --quiet refs/heads/"$SYNC_BRANCH"; then
             git branch -D "$SYNC_BRANCH"
           fi
           git checkout -b "$SYNC_BRANCH" main
 
-          CONFLICT_FILES=""
           if git merge "$LATEST_TAG" --allow-unrelated-histories -m "Sync upstream release $LATEST_TAG"; then
             echo "Merge succeeded."
           else
-            # 先记录冲突文件列表
-            CONFLICT_FILES=$(git diff --name-only --diff-filter=U 2>/dev/null || true)
-            # 提交带冲突标记的状态，等待手动 review
-            echo "Conflict detected. Committing conflicted state for manual resolution..."
-            echo "Conflicted files:"
-            echo "$CONFLICT_FILES"
-            git add .
-            git commit -m "Sync upstream release $LATEST_TAG (conflicts pending)"
+            echo "Conflict detected. Resolving with upstream version..."
+            git merge --abort
+            git merge "$LATEST_TAG" --allow-unrelated-histories \
+                       -X theirs \
+                       -m "Sync upstream release $LATEST_TAG"
           fi
 
           git push -f origin "$SYNC_BRANCH"
 
-          # 将 PR 描述写入临时文件，避免多行 shell 变量引号问题
           cat > /tmp/pr_body.md << EOM
           自动同步上游 [Predidit/Kazumi]($LATEST_TAG)
+          
+          由 GitHub Actions 自动创建，同步上游(https://github.com/Predidit/Kazumi/releases/tag/$LATEST_TAG)。
 
-          由 GitHub Actions 自动创建。
           EOM
-
-          if [ -n "$CONFLICT_FILES" ]; then
-            cat >> /tmp/pr_body.md << EOM
-
-          ⚠️ 此 PR 存在合并冲突，需手动解决。
-          冲突文件：
-          \`\`\`
-          $CONFLICT_FILES
-          \`\`\`
-          EOM
-          fi
 
           if gh pr list --head "$SYNC_BRANCH" --repo starlit-dream/Kazumas | grep -q .; then
             echo "PR already exists for $SYNC_BRANCH"
