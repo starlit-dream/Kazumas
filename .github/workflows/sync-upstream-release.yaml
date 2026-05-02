@@ -67,10 +67,7 @@ jobs:
           # 构造 PR 描述
           PR_BODY="自动同步上游 [Predidit/Kazumi]($LATEST_TAG)
 
-由 GitHub Actions 自动创建。
-
-- 无冲突：正常合并提交
-- 有冲突：直接取 upstream 版本文件覆盖，GitHub 可识别为待解决冲突"
+          由 GitHub Actions 自动创建。这是对上游Predidit/Kazumi最新版本的同步。
 
           if gh pr list --head "$SYNC_BRANCH" --repo starlit-dream/Kazumas | grep -q .; then
             echo "PR already exists for $SYNC_BRANCH"
