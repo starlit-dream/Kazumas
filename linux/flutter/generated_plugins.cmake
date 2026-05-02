@@ -5,7 +5,11 @@
 list(APPEND FLUTTER_PLUGIN_LIST
   desktop_webview_window
   dynamic_color
+<<<<<<< HEAD
   flutter_secure_storage_linux
+=======
+  file_selector_linux
+>>>>>>> 2.0.9
   flutter_volume_controller
   media_kit_libs_linux
   media_kit_video

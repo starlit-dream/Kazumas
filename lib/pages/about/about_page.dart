@@ -144,6 +144,7 @@ class _AboutPageState extends State<AboutPage> {
         style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.w700,
             ),
+<<<<<<< HEAD
       ),
     );
   }
@@ -164,6 +165,59 @@ class _AboutPageState extends State<AboutPage> {
               for (int i = 0; i < children.length; i++) ...[
                 if (i > 0) const Divider(height: 1),
                 children[i],
+=======
+            SettingsSection(
+              title: Text('外部链接', style: TextStyle(fontFamily: fontFamily)),
+              tiles: [
+                SettingsTile.navigation(
+                  onPressed: (_) {
+                    launchUrl(Uri.parse(Api.projectUrl),
+                        mode: LaunchMode.externalApplication);
+                  },
+                  title: Text('项目主页', style: TextStyle(fontFamily: fontFamily)),
+                ),
+                SettingsTile.navigation(
+                  onPressed: (_) {
+                    launchUrl(Uri.parse(Api.sourceUrl),
+                        mode: LaunchMode.externalApplication);
+                  },
+                  title: Text('代码仓库', style: TextStyle(fontFamily: fontFamily)),
+                  value: Text('Github', style: TextStyle(fontFamily: fontFamily)),
+                ),
+                SettingsTile.navigation(
+                  onPressed: (_) {
+                    launchUrl(Uri.parse(Api.iconUrl),
+                        mode: LaunchMode.externalApplication);
+                  },
+                  title: Text('图标创作', style: TextStyle(fontFamily: fontFamily)),
+                  value: Text('Pixiv', style: TextStyle(fontFamily: fontFamily)),
+                ),
+                SettingsTile.navigation(
+                  onPressed: (_) {
+                    launchUrl(Uri.parse(Api.bangumiIndex),
+                        mode: LaunchMode.externalApplication);
+                  },
+                  title: Text('番剧索引', style: TextStyle(fontFamily: fontFamily)),
+                  value: Text('Bangumi', style: TextStyle(fontFamily: fontFamily)),
+                ),
+                SettingsTile.navigation(
+                  onPressed: (_) {
+                    launchUrl(Uri.parse('https://trace.moe'),
+                        mode: LaunchMode.externalApplication);
+                  },
+                  title: Text('以图搜番', style: TextStyle(fontFamily: fontFamily)),
+                  value: Text('trace.moe', style: TextStyle(fontFamily: fontFamily)),
+                ),
+                SettingsTile.navigation(
+                  onPressed: (_) {
+                    launchUrl(Uri.parse(Api.dandanIndex),
+                        mode: LaunchMode.externalApplication);
+                  },
+                  title: Text('弹幕来源', style: TextStyle(fontFamily: fontFamily)),
+                  description: Text('ID: ${mortis['id']}', style: TextStyle(fontFamily: fontFamily)),
+                  value: Text('DanDanPlay', style: TextStyle(fontFamily: fontFamily)),
+                ),
+>>>>>>> 2.0.9
               ],
             ],
           ),
