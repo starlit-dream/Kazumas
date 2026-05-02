@@ -1,4 +1,4 @@
-import 'package:kazumi/pages/bangumi/bangumi_setting.dart';
+import 'package:kazumi/pages/bangumi/unified_bangumi_page.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 
 class BangumiModule extends Module {
@@ -7,6 +7,6 @@ class BangumiModule extends Module {
 
   @override
   void routes(r) {
-    r.child("/", child: (_) => const BangumiEditorPage());
+    r.child("/", child: (_) => const UnifiedBangumiPage());
   }
 }
