@@ -394,12 +394,18 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
         child: Row(
           children: [
             CircleAvatar(
+              radius: 22,
               backgroundColor:
                   Theme.of(context).colorScheme.primaryContainer,
-              child: Icon(
-                Icons.person_rounded,
-                color: Theme.of(context).colorScheme.onPrimaryContainer,
-              ),
+              backgroundImage: BangumiAuth.avatar.isNotEmpty
+                  ? NetworkImage(BangumiAuth.avatar)
+                  : null,
+              child: BangumiAuth.avatar.isEmpty
+                  ? Icon(
+                      Icons.person_rounded,
+                      color: Theme.of(context).colorScheme.onPrimaryContainer,
+                    )
+                  : null,
             ),
             const SizedBox(width: 12),
             Expanded(
