@@ -1,477 +1,614 @@
 ---
-    name: "release"
-    
-    on:
-      push:
-        tags:
-          - "*"
-      workflow_dispatch:
-        inputs:
-          logLevel:
-            description: 'Log level'     
-            required: true
-            default: 'warning'
-    
-    jobs:
-      flutter-build-android:
-        name: "Release for android"
-        runs-on: "ubuntu-latest" 
-        permissions: write-all
-        steps:
-          - name: Clone repository
-            uses: actions/checkout@v4
-          - name: Extract tag name
-            run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-            shell: bash
-          - name: Echo build progress
-            run: echo "Kazumi_android_${{ env.tag }}.apk build progress"
-            shell: bash
-          - name: Install dependencies
-            run: |
-              sudo apt-get update
-              sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev libasound2-dev
-            shell: bash
-          - name: Set up JDK 17
-            uses: actions/setup-java@v4
-            with:
-              java-version: '17'
-              distribution: 'temurin'          
-          - name: Set up Flutter
-            uses: subosito/flutter-action@v2.16.0
-            with:
-              channel: stable
-              flutter-version-file: pubspec.yaml
-          - name: Get Flutter dependencies
-            run: flutter pub get
-            shell: bash
-          - name: Inject DanDan API Credentials
-            run: |
-              sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-              sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-              sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-              sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
-          - name: Build Flutter for Android
-            run: |
-              flutter build apk --split-per-abi --target-platform android-arm,android-arm64,android-x64 \
-                --dart-define=BRANCH_VERSION=${{ env.tag }} \
-                --dart-define=UPSTREAM_VERSION=${{ env.tag }} \
-                --dart-define=BUILD_COMMIT=${{ github.sha }}
-              flutter build apk --release \
-                --dart-define=BRANCH_VERSION=${{ env.tag }} \
-                --dart-define=UPSTREAM_VERSION=${{ env.tag }} \
-                --dart-define=BUILD_COMMIT=${{ github.sha }}
-            shell: bash
-          - name: Package android build output
-            run: |
-              cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk Kazumi_android_${env:tag}_armeabi-v7a.apk
-              cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Kazumi_android_${env:tag}_arm64-v8a.apk
-              cp build/app/outputs/flutter-apk/app-x86_64-release.apk Kazumi_android_${env:tag}_x86_64.apk
-              cp build/app/outputs/flutter-apk/app-release.apk Kazumi_android_${env:tag}_universal.apk
-            shell: bash
+name: "release"
 
-          - name: Upload android outputs
-            uses: actions/upload-artifact@v4
-            with:
-              name: android_outputs
-              path: Kazumi_android_*.apk
+on:
+  push:
+    tags:
+      - "*"
+  workflow_dispatch:
+    inputs:
+      logLevel:
+        description: 'Log level'
+        required: true
+        default: 'warning'
+      version:
+        description: 'Kazumas 版本号（留空则用 ref_name；tag push 自动使用 tag 名）'
+        required: false
+        default: ''
+      upstream_version:
+        description: '上游 Kazumi 版本号（留空自动检测）'
+        required: false
+        default: ''
 
-      flutter-build-windows:
-        name: "Release for windows"
-        runs-on: "windows-latest"
-        needs: [flutter-build-android, flutter-build-ios, flutter-build-linux, flutter-build-macos] 
-        permissions: write-all
-    
-        steps:
-          - name: Clone repository
-            uses: actions/checkout@v4
-          - run: |
-                  $tag = "${{ github.ref }}".Replace('refs/tags/', '')
-                  echo "tag=$(echo $tag)" >> $env:GITHUB_ENV
-          - run: echo "Kazumi_windows_${env:tag}.zip build progress"
-          - run: choco install yq
-          - name: Enable Git longpaths
-            run: git config --system core.longpaths true
-          - name: Set up Flutter
-            uses: subosito/flutter-action@v2.16.0
-            with:
-              channel: stable
-              flutter-version-file: pubspec.yaml
-          - name: Set up Java
-            uses: actions/setup-java@v4
-            with:
-              distribution: 'temurin'
-              java-version: '18'
-          - run: flutter pub get
-          - name: Inject DanDan API Credentials
-            env:
-              DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
-              DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
-              BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
-              BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
-            run: |
-              (Get-Content -Path 'lib/utils/mortis.dart') -replace "kvpx7qkqjh", "$env:DANDANAPI_APPID" | Set-Content -Path 'lib/utils/mortis.dart'
-              (Get-Content -Path 'lib/utils/mortis.dart') -replace "rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax", "$env:DANDANAPI_KEY" | Set-Content -Path 'lib/utils/mortis.dart'
-              (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_id_placeholder", "$env:BANGUMI_APP_ID" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
-              (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_secret_placeholder", "$env:BANGUMI_APP_SECRET" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
-          - run: flutter build windows --dart-define=BRANCH_VERSION=${env:tag} --dart-define=UPSTREAM_VERSION=${env:tag} --dart-define=BUILD_COMMIT=${{ github.sha }}
-          - run: Compress-Archive build/windows/x64/runner/Release/* Kazumi_windows_${env:tag}.zip
-          - name: Upload windows outputs
-            uses: actions/upload-artifact@v4
-            id: unsigned-windows-zip-artifacts
-            with:
-              name: windows_outputs
-              path: |
-                Kazumi_windows_*.zip
+jobs:
+  # ============================================================
+  # 中心化版本解析 - 所有平台 job 依赖此 job 获取版本号
+  # ============================================================
+  resolve-versions:
+    name: "Resolve versions"
+    runs-on: "ubuntu-latest"
+    outputs:
+      branch_version: ${{ steps.resolve.outputs.branch_version }}
+      upstream_version: ${{ steps.resolve.outputs.upstream_version }}
+    steps:
+      - name: Resolve tag / version
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          INPUT_UPSTREAM: ${{ github.event.inputs.upstream_version || '' }}
+          INPUT_VERSION: ${{ github.event.inputs.version || '' }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          # 优先级: 1) 手动输入的 version  2) tag push 的 ref_name  3) 回退到 ref_name
+          if [ -n "$INPUT_VERSION" ]; then
+            BRANCH_VERSION="$INPUT_VERSION"
+            echo "Using manually specified version: $BRANCH_VERSION"
+          else
+            BRANCH_VERSION="$REF_NAME"
+            echo "Using ref_name as version: $BRANCH_VERSION"
+          fi
+          echo "branch_version=$BRANCH_VERSION" >> $GITHUB_OUTPUT
 
-          # Sign Zip
-          - run: New-Item -Path "build/windows/zip_signed_output" -ItemType Directory
-          - name: sign windows zip
-            uses: signpath/github-action-submit-signing-request@v1.1
-            with:
-              api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
-              organization-id: 'fa047255-4772-4be1-b14f-5cfa62635877'
-              project-slug: 'Kazumi'
-              signing-policy-slug: 'release-signing'
-              artifact-configuration-slug: 'Packet'
-              github-artifact-id: '${{ steps.unsigned-windows-zip-artifacts.outputs.artifact-id }}'
-              wait-for-completion: true
-              output-artifact-directory: 'build/windows/zip_signed_output'
-          
-          - name: Upload windows zip signed ouputs
-            uses: actions/upload-artifact@v4
-            id: signed-windows-zip-artifacts
-            with:
-              name: windows_zip_signed_outputs
-              path: build/windows/zip_signed_output/*.zip
-              
-          # Replace Unpacked Artifact with Signed Artifact
-          - name: Replace Unpacked Artifact with Signed Artifact
-            run: Expand-Archive -Path "build/windows/zip_signed_output/Kazumi_windows_${env:tag}.zip" -DestinationPath "build/windows/x64/runner/Release" -Force
-          
-          # Build Unsigned MSIX
-          - name: Build unsigned msix
-            run: dart run msix:create
-          - name: Upload windows msix ouputs
-            uses: actions/upload-artifact@v4
-            id: unsigned-windows-msix-artifacts
-            with:
-              name: windows_msix_outputs
-              path: |
-                build/windows/x64/runner/Release/kazumi.msix
-          
-          # Sign MSIX
-          - run: New-Item -Path "build/windows/msix_signed_output" -ItemType Directory
-          - name: sign windows msix
-            uses: signpath/github-action-submit-signing-request@v1.1
-            with:
-              api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
-              organization-id: 'fa047255-4772-4be1-b14f-5cfa62635877'
-              project-slug: 'Kazumi'
-              signing-policy-slug: 'release-signing'
-              artifact-configuration-slug: 'MSIX'
-              github-artifact-id: '${{ steps.unsigned-windows-msix-artifacts.outputs.artifact-id }}'
-              wait-for-completion: true
-              output-artifact-directory: 'build/windows/msix_signed_output'
-          
-          - name: Upload windows msix signed ouputs
-            uses: actions/upload-artifact@v4
-            id: signed-windows-msix-artifacts
-            with:
-              name: windows_msix_signed_outputs
-              path: build/windows/msix_signed_output/*.msix
+          if [ -n "$INPUT_UPSTREAM" ]; then
+            echo "Using manually specified upstream version: $INPUT_UPSTREAM"
+            echo "upstream_version=$INPUT_UPSTREAM" >> $GITHUB_OUTPUT
+          else
+            echo "Fetching latest upstream version from Predidit/Kazumi..."
+            UPSTREAM_TAG=$(gh api repos/Predidit/Kazumi/releases/latest --jq '.tag_name' 2>/dev/null || echo "unknown")
+            echo "Detected upstream version: $UPSTREAM_TAG"
+            echo "upstream_version=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+          fi
+        shell: bash
 
-      flutter-build-linux:
-        name: "Release for Linux"
-        runs-on: "ubuntu-latest" 
-        permissions: write-all
-        steps:
-          - name: Clone repository
-            uses: actions/checkout@v4
-          - name: Extract tag name
-            run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-            shell: bash
-          - name: Echo build progress
-            run: echo "Kazumi_linux_${{ env.tag }}.tar.gz build progress"
-            shell: bash
-          - name: Install dependencies
-            run: |
-              sudo apt-get update
-              sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev unzip webkit2gtk-4.1 libasound2-dev libsecret-1-dev libjsoncpp-dev
-              sudo apt-get install -y gcc g++ autoconf automake debhelper glslang-dev ladspa-sdk xutils-dev libasound2-dev \
-                  libarchive-dev libbluray-dev libbs2b-dev libcaca-dev libcdio-paranoia-dev libdrm-dev \
-                  libdav1d-dev libdvdnav-dev libegl1-mesa-dev libepoxy-dev libfontconfig-dev libfreetype6-dev \
-                  libfribidi-dev libgl1-mesa-dev libgbm-dev libgme-dev libgsm1-dev libharfbuzz-dev libjpeg-dev \
-                  libbrotli-dev liblcms2-dev libmodplug-dev libmp3lame-dev libopenal-dev \
-                  libopus-dev libopencore-amrnb-dev libopencore-amrwb-dev libpulse-dev librtmp-dev \
-                  libsdl2-dev libsixel-dev libssh-dev libsoxr-dev libspeex-dev libtool \
-                  libv4l-dev libva-dev libvdpau-dev libvorbis-dev libvo-amrwbenc-dev \
-                  libunwind-dev libvpx-dev libwayland-dev libx11-dev libxext-dev \
-                  libxkbcommon-dev libxrandr-dev libxss-dev libxv-dev libxvidcore-dev \
-                  linux-libc-dev nasm ninja-build pkg-config python3 python3-docutils wayland-protocols \
-                  x11proto-core-dev zlib1g-dev libfdk-aac-dev libtheora-dev libwebp-dev \
-                  unixodbc-dev libpq-dev libxxhash-dev libaom-dev              
-            shell: bash
-          - name: Set up Flutter
-            uses: subosito/flutter-action@v2.16.0
-            with:
-              channel: stable
-              flutter-version-file: pubspec.yaml
-          - name: Get Flutter dependencies
-            run: flutter pub get
-            shell: bash
-          - name: Inject DanDan API Credentials
-            run: |
-              sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-              sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-              sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-              sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
-          - name: Build Flutter for Linux
-            run: flutter build linux --dart-define=BRANCH_VERSION=${{ env.tag }} --dart-define=UPSTREAM_VERSION=${{ env.tag }} --dart-define=BUILD_COMMIT=${{ github.sha }}
-            shell: bash
-          # - name: Download FFmpeg Assets
-          #   uses: dsaltares/fetch-gh-release-asset@master
-          #   with:
-          #     repo: 'Predidit/avbuild'
-          #     version: 'tags/1.1.0'
-          #     file: 'ffmpeg_linux_amd64.zip'
-          #     token: ${{ secrets.GITHUB_TOKEN }}
-          # - run: rm -f build/linux/x64/release/bundle/lib/libffmpeg.so.7
-          # - run: unzip ffmpeg_linux_amd64.zip -d build/linux/x64/release/bundle/lib
-          - name: Package linux build output
-            run: |
-              # Tarball package
-              tar -zcvf Kazumi_linux_${{ env.tag }}_amd64.tar.gz -C build/linux/x64/release/bundle .
+  # ============================================================
+  # Android 构建
+  # ============================================================
+  flutter-build-android:
+    name: "Release for Android"
+    runs-on: "ubuntu-latest"
+    needs: [resolve-versions]
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev libasound2-dev
+        shell: bash
+      - uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - uses: subosito/flutter-action@v2.16.0
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+      - run: flutter pub get
+        shell: bash
+      - name: Inject DanDan API Credentials
+        run: |
+          sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
+          sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
+          sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
+          sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+      - name: Build Flutter for Android
+        run: |
+          flutter build apk --split-per-abi --target-platform android-arm,android-arm64,android-x64 \
+            --dart-define=BRANCH_VERSION=${{ needs.resolve-versions.outputs.branch_version }} \
+            --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} \
+            --dart-define=BUILD_COMMIT=${{ github.sha }}
+          flutter build apk --release \
+            --dart-define=BRANCH_VERSION=${{ needs.resolve-versions.outputs.branch_version }} \
+            --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} \
+            --dart-define=BUILD_COMMIT=${{ github.sha }}
+        shell: bash
+      - name: Package Android APKs
+        run: |
+          VERSION=${{ needs.resolve-versions.outputs.branch_version }}
+          cp build/app/outputs/flutter-apk/app-armeabi-v7a-release.apk  "Kazumas_android_${VERSION}_armeabi-v7a.apk"
+          cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk    "Kazumas_android_${VERSION}_arm64-v8a.apk"
+          cp build/app/outputs/flutter-apk/app-x86_64-release.apk       "Kazumas_android_${VERSION}_x86_64.apk"
+          cp build/app/outputs/flutter-apk/app-release.apk              "Kazumas_android_${VERSION}_universal.apk"
+        shell: bash
+      - name: Upload Android outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: android_outputs
+          path: Kazumas_android_*.apk
 
-              # Debian package
-              mkdir Kazumi_linux_${{ env.tag }}_amd64
-              cd Kazumi_linux_${{ env.tag }}_amd64
-              mkdir -p opt/Kazumi
-              mkdir -p usr/share/applications
-              mkdir -p usr/share/icons/hicolor/512x512/apps
-              cp -r ../build/linux/x64/release/bundle/* opt/Kazumi
-              cp -r ../assets/linux/DEBIAN .
-              chmod 0755 DEBIAN/postinst
-              chmod 0755 DEBIAN/postrm
+  # ============================================================
+  # Windows 构建（仅依赖版本解析，不等待其他平台）
+  # ============================================================
+  flutter-build-windows:
+    name: "Release for Windows"
+    runs-on: "windows-latest"
+    needs: [resolve-versions]
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@v4
+      - run: choco install yq
+      - name: Enable Git longpaths
+        run: git config --system core.longpaths true
+      - uses: subosito/flutter-action@v2.16.0
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '18'
+      - run: flutter pub get
+      - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
+        run: |
+          (Get-Content -Path 'lib/utils/mortis.dart') -replace "kvpx7qkqjh", "$env:DANDANAPI_APPID" | Set-Content -Path 'lib/utils/mortis.dart'
+          (Get-Content -Path 'lib/utils/mortis.dart') -replace "rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax", "$env:DANDANAPI_KEY" | Set-Content -Path 'lib/utils/mortis.dart'
+          (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_id_placeholder", "$env:BANGUMI_APP_ID" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
+          (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_secret_placeholder", "$env:BANGUMI_APP_SECRET" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
+      - name: Build Flutter for Windows
+        run: flutter build windows --dart-define=BRANCH_VERSION=${{ needs.resolve-versions.outputs.branch_version }} --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - name: Package ZIP
+        run: |
+          $ver = "${{ needs.resolve-versions.outputs.branch_version }}"
+          Compress-Archive build/windows/x64/runner/Release/* "Kazumas_windows_${ver}.zip"
+      - name: Upload unsigned ZIP
+        uses: actions/upload-artifact@v4
+        id: unsigned-windows-zip-artifacts
+        with:
+          name: windows_outputs
+          path: Kazumas_windows_*.zip
 
-              cat>DEBIAN/control<<EOF
-              Maintainer: madoka773 <valigarmanda55@gmail.com>
-              Package: Kazumi
-              Version: ${{ env.tag }}
-              Section: x11
-              Priority: optional
-              Architecture: amd64
-              Essential: no
-              Installed-Size: 34648
-              Description: Watch Animes online with danmaku support.
-              Homepage: https://github.com/Predidit/Kazumi
-              Depends: libayatana-appindicator3-1,
-                       gir1.2-ayatanaappindicator3-0.1,
-                       libwebkit2gtk-4.1-0,
-                       libsecret-1-0
-              EOF
+      # Sign ZIP
+      - run: New-Item -Path "build/windows/zip_signed_output" -ItemType Directory
+      - name: Sign Windows ZIP
+        uses: signpath/github-action-submit-signing-request@v1.1
+        continue-on-error: true
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: 'fa047255-4772-4be1-b14f-5cfa62635877'
+          project-slug: 'Kazumi'
+          signing-policy-slug: 'release-signing'
+          artifact-configuration-slug: 'Packet'
+          github-artifact-id: '${{ steps.unsigned-windows-zip-artifacts.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: 'build/windows/zip_signed_output'
+      - name: Upload signed ZIP
+        uses: actions/upload-artifact@v4
+        id: signed-windows-zip-artifacts
+        continue-on-error: true
+        with:
+          name: windows_zip_signed_outputs
+          path: build/windows/zip_signed_output/*.zip
 
-              cp ../assets/linux/io.github.Predidit.Kazumi.desktop usr/share/applications
-              cp ../assets/images/logo/logo_linux.png usr/share/icons/hicolor/512x512/apps/io.github.Predidit.Kazumi.png
+      # Replace unpacked with signed
+      - name: Replace with signed artifact
+        continue-on-error: true
+        run: |
+          $ver = "${{ needs.resolve-versions.outputs.branch_version }}"
+          $signedZip = "build/windows/zip_signed_output/Kazumas_windows_${ver}.zip"
+          if (Test-Path $signedZip) {
+            Expand-Archive -Path $signedZip -DestinationPath "build/windows/x64/runner/Release" -Force
+          }
 
-              cd ..
-              dpkg-deb --build --root-owner-group Kazumi_linux_${{ env.tag }}_amd64
-            shell: bash
+      # Build MSIX
+      - name: Build unsigned MSIX
+        run: dart run msix:create
+        continue-on-error: true
+      - name: Upload unsigned MSIX
+        uses: actions/upload-artifact@v4
+        id: unsigned-windows-msix-artifacts
+        continue-on-error: true
+        with:
+          name: windows_msix_outputs
+          path: build/windows/x64/runner/Release/kazumi.msix
 
-          - name: Upload linux outputs
-            uses: actions/upload-artifact@v4
-            with:
-              name: linux_outputs
-              path: |
-                Kazumi_linux_*.tar.gz
-                Kazumi_linux_*.deb
+      # Sign MSIX
+      - run: New-Item -Path "build/windows/msix_signed_output" -ItemType Directory
+      - name: Sign Windows MSIX
+        uses: signpath/github-action-submit-signing-request@v1.1
+        continue-on-error: true
+        with:
+          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
+          organization-id: 'fa047255-4772-4be1-b14f-5cfa62635877'
+          project-slug: 'Kazumi'
+          signing-policy-slug: 'release-signing'
+          artifact-configuration-slug: 'MSIX'
+          github-artifact-id: '${{ steps.unsigned-windows-msix-artifacts.outputs.artifact-id }}'
+          wait-for-completion: true
+          output-artifact-directory: 'build/windows/msix_signed_output'
+      - name: Upload signed MSIX
+        uses: actions/upload-artifact@v4
+        id: signed-windows-msix-artifacts
+        continue-on-error: true
+        with:
+          name: windows_msix_signed_outputs
+          path: build/windows/msix_signed_output/*.msix
 
-      flutter-build-ios:
-        name: "Release for iOS"
-        runs-on: "macos-latest"
-        permissions: write-all
+  # ============================================================
+  # Linux 构建
+  # ============================================================
+  flutter-build-linux:
+    name: "Release for Linux"
+    runs-on: "ubuntu-latest"
+    needs: [resolve-versions]
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev unzip webkit2gtk-4.1 libasound2-dev libsecret-1-dev libjsoncpp-dev
+          sudo apt-get install -y gcc g++ autoconf automake debhelper glslang-dev ladspa-sdk xutils-dev libasound2-dev \
+              libarchive-dev libbluray-dev libbs2b-dev libcaca-dev libcdio-paranoia-dev libdrm-dev \
+              libdav1d-dev libdvdnav-dev libegl1-mesa-dev libepoxy-dev libfontconfig-dev libfreetype6-dev \
+              libfribidi-dev libgl1-mesa-dev libgbm-dev libgme-dev libgsm1-dev libharfbuzz-dev libjpeg-dev \
+              libbrotli-dev liblcms2-dev libmodplug-dev libmp3lame-dev libopenal-dev \
+              libopus-dev libopencore-amrnb-dev libopencore-amrwb-dev libpulse-dev librtmp-dev \
+              libsdl2-dev libsixel-dev libssh-dev libsoxr-dev libspeex-dev libtool \
+              libv4l-dev libva-dev libvdpau-dev libvorbis-dev libvo-amrwbenc-dev \
+              libunwind-dev libvpx-dev libwayland-dev libx11-dev libxext-dev \
+              libxkbcommon-dev libxrandr-dev libxss-dev libxv-dev libxvidcore-dev \
+              linux-libc-dev nasm ninja-build pkg-config python3 python3-docutils wayland-protocols \
+              x11proto-core-dev zlib1g-dev libfdk-aac-dev libtheora-dev libwebp-dev \
+              unixodbc-dev libpq-dev libxxhash-dev libaom-dev
+        shell: bash
+      - uses: subosito/flutter-action@v2.16.0
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+      - run: flutter pub get
+        shell: bash
+      - name: Inject DanDan API Credentials
+        run: |
+          sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
+          sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
+          sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
+          sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+      - name: Build Flutter for Linux
+        run: flutter build linux --dart-define=BRANCH_VERSION=${{ needs.resolve-versions.outputs.branch_version }} --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
+        shell: bash
+      - name: Package Linux build output
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
 
-        steps:
-          - name: Clone repository
-            uses: actions/checkout@v4
-          - name: Extract tag name
-            run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          - name: Echo build progress
-            run: echo "Kazumi_ios_${{ env.tag }}.ipa build progress"
-          - name: Set up Flutter
-            uses: subosito/flutter-action@v2.16.0
-            with:
-              channel: stable
-              flutter-version-file: pubspec.yaml
-          - run: flutter pub get
-          - name: Inject DanDan API Credentials
-            run: |
-              sed -i '' "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-              sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-              sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-              sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
-          - name: Build IPA
-            run: |
-              flutter build ios --release --no-codesign \
-                --dart-define=BRANCH_VERSION=${{ env.tag }} \
-                --dart-define=UPSTREAM_VERSION=${{ env.tag }} \
-                --dart-define=BUILD_COMMIT=${{ github.sha }}
-          - name: Create IPA
-            run: |
-              mkdir Payload
-              cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
-              find Payload/Runner.app/Frameworks -type d -name "*.framework" -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \;
-              zip -q -r Kazumi_ios_${{ env.tag }}_no_sign.ipa Payload
-          - name: Upload iOS build
-            uses: actions/upload-artifact@v4
-            with:
-              name: ios_outputs
-              path: Kazumi_ios_*.ipa
+          # Tarball package
+          tar -zcvf "Kazumas_linux_${VERSION}_amd64.tar.gz" -C build/linux/x64/release/bundle .
 
-      flutter-build-macos:
-        name: "Release for Macos"
-        runs-on: "macos-latest"
-        permissions: write-all
+          # Debian package
+          mkdir "Kazumas_linux_${VERSION}_amd64"
+          cd "Kazumas_linux_${VERSION}_amd64"
+          mkdir -p opt/Kazumas
+          mkdir -p usr/share/applications
+          mkdir -p usr/share/icons/hicolor/512x512/apps
+          cp -r ../build/linux/x64/release/bundle/* opt/Kazumas
+          cp -r ../assets/linux/DEBIAN .
+          chmod 0755 DEBIAN/postinst
+          chmod 0755 DEBIAN/postrm
 
-        steps:
-          - name: Clone repository
-            uses: actions/checkout@v4
-          - name: Extract tag name
-            run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-          - name: Echo build progress
-            run: echo "Kazumi_macos_${{ env.tag }}.dmg build progress"
-          - name: Set up Flutter
-            uses: subosito/flutter-action@v2.16.0
-            with:
-              channel: stable
-              flutter-version-file: pubspec.yaml
-          - run: flutter pub get
-          - name: Inject DanDan API Credentials
-            run: |
-              sed -i '' "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-              sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-              sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-              sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
-          - run: flutter build macos --release --dart-define=BRANCH_VERSION=${{ env.tag }} --dart-define=UPSTREAM_VERSION=${{ env.tag }} --dart-define=BUILD_COMMIT=${{ github.sha }}
-          - name: Create DMG
-            run: |
-              npm install --global create-dmg
-              create-dmg build/macos/Build/Products/Release/Kazumi.app
-            continue-on-error: true
-          - name: Rename DMG
-            run: mv Kazumi*.dmg Kazumi_macos_${{ env.tag }}.dmg
-          - name: Upload MacOS build
-            uses: actions/upload-artifact@v4
-            with:
-              name: macos_outputs
-              path: Kazumi_macos_*.dmg
+          cat>DEBIAN/control<<EOF
+          Maintainer: madoka773 <valigarmanda55@gmail.com>
+          Package: Kazumas
+          Version: ${VERSION}
+          Section: x11
+          Priority: optional
+          Architecture: amd64
+          Essential: no
+          Installed-Size: 34648
+          Description: Kazumas - A Kazumi fork with additional features.
+          Homepage: https://github.com/starlit-dream/Kazumas
+          Depends: libayatana-appindicator3-1,
+                   gir1.2-ayatanaappindicator3-0.1,
+                   libwebkit2gtk-4.1-0,
+                   libsecret-1-0
+          EOF
 
-      release:
-        name: "Release"
-        runs-on: "ubuntu-latest"
-        needs: [flutter-build-android, flutter-build-windows, flutter-build-linux, flutter-build-ios, flutter-build-macos]
-        permissions: write-all
-        steps:
-          - name: Clone repository
-            uses: actions/checkout@v4
-          - name: Extract tag name
-            run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
-            shell: bash
-          - name: Set up JDK 17
-            uses: actions/setup-java@v4
-            with:
-              java-version: '17'
-              distribution: 'temurin'          
-          - name: Setup Android SDK
-            uses: android-actions/setup-android@v3
-          - name: Setup Android build tools
-            run: sdkmanager "build-tools;34.0.0"
-  
-          - name: Download windows zip build file
-            uses: actions/download-artifact@v4
-            with:
-              name: windows_zip_signed_outputs
-              path: windows_zip_signed_outputs 
-          - name: List files in windows_outputs directory
-            run: ls -l windows_zip_signed_outputs   
-          - name: Copy windows build file to root
-            run: cp windows_zip_signed_outputs/* Kazumi_windows_${{ env.tag }}.zip
+          cp ../assets/linux/io.github.starlitdream.Kazumas.desktop usr/share/applications
+          cp ../assets/images/logo/logo_linux.png usr/share/icons/hicolor/512x512/apps/io.github.starlitdream.Kazumas.png
 
-          - name: Download windows msix build file
-            uses: actions/download-artifact@v4
-            with:
-              name: windows_msix_signed_outputs
-              path: windows_msix_signed_outputs  
-          - name: List files in windows_msix_signed_outputs directory
-            run: ls -l windows_msix_signed_outputs   
-          - name: Copy windows build file to root
-            run: cp windows_msix_signed_outputs/* Kazumi_windows_${{ env.tag }}.msix
+          cd ..
+          dpkg-deb --build --root-owner-group "Kazumas_linux_${VERSION}_amd64"
+        shell: bash
+      - name: Upload Linux outputs
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux_outputs
+          path: |
+            Kazumas_linux_*.tar.gz
+            Kazumas_linux_*.deb
 
-          - name: Download android build file
-            uses: actions/download-artifact@v4
-            with:
-              name: android_outputs
-              path: android_outputs 
-          - name: List files in android_outputs directory
-            run: ls -l android_outputs   
-          - name: Copy android build file to unsigned floder
-            run: | 
-              mkdir build
-              mkdir build/unsigned
-              mkdir build/signed
-              cp android_outputs/*.apk build/unsigned/
+  # ============================================================
+  # iOS 构建
+  # ============================================================
+  flutter-build-ios:
+    name: "Release for iOS"
+    runs-on: "macos-latest"
+    needs: [resolve-versions]
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2.16.0
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+      - run: flutter pub get
+      - name: Inject DanDan API Credentials
+        run: |
+          sed -i '' "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
+          sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
+          sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+      - name: Build IPA
+        run: |
+          flutter build ios --release --no-codesign \
+            --dart-define=BRANCH_VERSION=${{ needs.resolve-versions.outputs.branch_version }} \
+            --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} \
+            --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - name: Package IPA
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
+          mkdir -p Payload
+          cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
+          find Payload/Runner.app/Frameworks -type d -name "*.framework" -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \;
+          zip -q -r "Kazumas_ios_${VERSION}_no_sign.ipa" Payload
+      - name: Upload iOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: ios_outputs
+          path: Kazumas_ios_*.ipa
 
-          - name: Download iOS build file
-            uses: actions/download-artifact@v4
-            with:
-              name: ios_outputs
-              path: ios_outputs  
-          - name: List files in ios_outputs directory
-            run: ls -l ios_outputs   
-          - name: Copy ios build file to root
-            run: cp ios_outputs/* Kazumi_ios_${{ env.tag }}_no_sign.ipa
+  # ============================================================
+  # macOS 构建
+  # ============================================================
+  flutter-build-macos:
+    name: "Release for macOS"
+    runs-on: "macos-latest"
+    needs: [resolve-versions]
+    permissions: write-all
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2.16.0
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+      - run: flutter pub get
+      - name: Inject DanDan API Credentials
+        run: |
+          sed -i '' "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
+          sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
+          sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+      - name: Build macOS app
+        run: |
+          flutter build macos --release \
+            --dart-define=BRANCH_VERSION=${{ needs.resolve-versions.outputs.branch_version }} \
+            --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} \
+            --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - name: Create DMG
+        continue-on-error: true
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
+          npm install --global create-dmg 2>/dev/null || true
+          # Try create-dmg first
+          create-dmg build/macos/Build/Products/Release/Kazumas.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
+          create-dmg build/macos/Build/Products/Release/Runner.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
+          create-dgm build/macos/Build/Products/Release/Kazumas.app 2>/dev/null || \
+          echo "DMG creation failed, will use .app bundle instead"
+      - name: Rename DMG or fallback to .app
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
+          if ls Kazumas*.dmg 1>/dev/null 2>&1; then
+            mv Kazumas*.dmg "Kazumas_macos_${VERSION}.dmg"
+          elif ls Kazumi*.dmg 1>/dev/null 2>&1; then
+            mv Kazumi*.dmg "Kazumas_macos_${VERSION}.dmg"
+          else
+            echo "No DMG found, creating zip from .app bundle"
+            ditto -c -k --sequesterRsrc --keepParent \
+              build/macos/Build/Products/Release/Kazumas.app \
+              "Kazumas_macos_${VERSION}.zip" 2>/dev/null || \
+            ditto -c -k --sequesterRsrc --keepParent \
+              build/macos/Build/Products/Release/Runner.app \
+              "Kazumas_macos_${VERSION}.zip"
+          fi
+      - name: Upload macOS build
+        uses: actions/upload-artifact@v4
+        with:
+          name: macos_outputs
+          path: |
+            Kazumas_macos_*.dmg
+            Kazumas_macos_*.zip
 
-          - name: Download macos build file
-            uses: actions/download-artifact@v4
-            with:
-              name: macos_outputs
-              path: macos_outputs  
-          - name: List files in macos_outputs directory
-            run: ls -l macos_outputs   
-          - name: Copy macos build file to root
-            run: cp macos_outputs/* Kazumi_macos_${{ env.tag }}.dmg   
-            
-          - name: Download linux build file
-            uses: actions/download-artifact@v4
-            with:
-              name: linux_outputs
-              path: linux_outputs  
-          - name: List files in linux_outputs directory
-            run: ls -l linux_outputs   
-          - name: Copy linux build file to root
-            run: cp linux_outputs/* .
+  # ============================================================
+  # 最终 Release - 收集所有平台产物、签名 APK、创建 GitHub Release
+  # ============================================================
+  release:
+    name: "Release"
+    runs-on: "ubuntu-latest"
+    needs:
+      - resolve-versions
+      - flutter-build-android
+      - flutter-build-windows
+      - flutter-build-linux
+      - flutter-build-ios
+      - flutter-build-macos
+    permissions: write-all
+    if: always()  # 即使部分平台失败也继续（已成功的产物仍可发布）
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+      - name: Setup Android build tools
+        run: sdkmanager "build-tools;34.0.0"
 
-          - name: Sign APK
-            id: sign_app
-            uses: filippoLeporati93/android-release-signer@v1
-            with:
-              releaseDirectory: build/unsigned
-              signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
-              alias: ${{ secrets.KEY_ALIAS }}
-              keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
-            env:
-              BUILD_TOOLS_VERSION: "34.0.0"
+      # 下载所有平台产物（跳过不存在的）
+      - name: Download Windows ZIP
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: windows_zip_signed_outputs
+          path: windows_zip_signed_outputs
+      - name: Download Windows MSIX
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: windows_msix_signed_outputs
+          path: windows_msix_signed_outputs
+      - name: Download Android
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: android_outputs
+          path: android_outputs
+      - name: Download iOS
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: ios_outputs
+          path: ios_outputs
+      - name: Download macOS
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: macos_outputs
+          path: macos_outputs
+      - name: Download Linux
+        uses: actions/download-artifact@v4
+        continue-on-error: true
+        with:
+          name: linux_outputs
+          path: linux_outputs
 
-          - name: Copy Signed android build file
-            run: cp build/unsigned/*-signed.apk build/signed/
+      - name: Stage all artifacts
+        run: |
+          VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
+          mkdir -p release_assets
 
-          - name: Create release
-            uses: softprops/action-gh-release@v2
-            with:
-              files: |
-                build/signed/*.apk
-                Kazumi_windows_*.zip
-                Kazumi_windows_*.msix
-                Kazumi_macos_*.dmg
-                Kazumi_ios_*.ipa
-                Kazumi_linux_*.tar.gz
-                Kazumi_linux_*.deb
+          # Windows ZIP (signed)
+          if [ -d windows_zip_signed_outputs ]; then
+            cp windows_zip_signed_outputs/*.zip "release_assets/Kazumas_windows_${VERSION}.zip" 2>/dev/null || true
+          fi
+          # Windows MSIX (signed)
+          if [ -d windows_msix_signed_outputs ]; then
+            cp windows_msix_signed_outputs/*.msix "release_assets/Kazumas_windows_${VERSION}.msix" 2>/dev/null || true
+          fi
+          # Android (unsigned, will sign below)
+          if [ -d android_outputs ]; then
+            mkdir -p build/unsigned
+            cp android_outputs/*.apk build/unsigned/ 2>/dev/null || true
+          fi
+          # iOS
+          if [ -d ios_outputs ]; then
+            cp ios_outputs/*.ipa "release_assets/" 2>/dev/null || true
+          fi
+          # macOS
+          if [ -d macos_outputs ]; then
+            cp macos_outputs/* "release_assets/" 2>/dev/null || true
+          fi
+          # Linux
+          if [ -d linux_outputs ]; then
+            cp linux_outputs/* "release_assets/" 2>/dev/null || true
+          fi
+
+          echo "=== Release assets ==="
+          ls -la release_assets/ || echo "(empty)"
+        shell: bash
+
+      # 签名 Android APK
+      - name: Sign Android APKs
+        id: sign_app
+        if: hashFiles('build/unsigned/*.apk') != ''
+        uses: filippoLeporati93/android-release-signer@v1
+        with:
+          releaseDirectory: build/unsigned
+          signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
+          alias: ${{ secrets.KEY_ALIAS }}
+          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+        env:
+          BUILD_TOOLS_VERSION: "34.0.0"
+      - name: Copy signed APKs
+        if: hashFiles('build/unsigned/*-signed.apk') != ''
+        run: |
+          cp build/unsigned/*-signed.apk release_assets/ 2>/dev/null || true
+          ls -la release_assets/
+        shell: bash
+
+      # 获取上游更新日志
+      - name: Fetch upstream release notes
+        id: upstream_notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          UPSTREAM_VERSION: ${{ needs.resolve-versions.outputs.upstream_version }}
+        run: |
+          UPSTREAM_BODY=$(gh api repos/Predidit/Kazumi/releases/tags/$UPSTREAM_VERSION --jq '.body' 2>/dev/null || echo "无法获取上游更新日志")
+          echo "upstream_body<<EOF" >> $GITHUB_OUTPUT
+          echo "$UPSTREAM_BODY" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        shell: bash
+        continue-on-error: true
+
+      # 生成本地更新日志
+      - name: Generate Kazumas changelog
+        id: kazumas_changelog
+        run: |
+          LAST_TAG=$(git tag --list 'v*' --sort=-version:refname | head -n 2 | tail -n 1 || echo "")
+          if [ -n "$LAST_TAG" ]; then
+            echo "Generating changelog since $LAST_TAG..."
+            CHANGES=$(git log --oneline --no-decorate $LAST_TAG..HEAD 2>/dev/null || echo "首次发布")
+          else
+            echo "No previous Kazumas release found, showing all commits..."
+            CHANGES=$(git log --oneline --no-decorate 2>/dev/null | head -50 || echo "首次发布")
+          fi
+          echo "changes<<EOF" >> $GITHUB_OUTPUT
+          echo "$CHANGES" >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+        shell: bash
+
+      # 创建 GitHub Release
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.resolve-versions.outputs.branch_version }}
+          name: "Kazumas ${{ needs.resolve-versions.outputs.branch_version }}"
+          body: |
+            # Kazumas ${{ needs.resolve-versions.outputs.branch_version }}
+
+            > 基于上游 Kazumi ${{ needs.resolve-versions.outputs.upstream_version }} 构建
+            > Built on top of upstream Kazumi ${{ needs.resolve-versions.outputs.upstream_version }}
+
+            ---
+
+            ## 📦 分支版本更新日志 (Kazumas Changelog)
+
+            ```
+            ${{ steps.kazumas_changelog.outputs.changes }}
+            ```
+
+            ---
+
+            ## ⬆️ 上游版本更新日志 (Upstream Changelog)
+
+            ${{ steps.upstream_notes.outputs.upstream_body }}
+
+            ---
+
+            ### 📋 版本信息
+            | 项目 | 值 |
+            |------|-----|
+            | **Kazumas 版本** | `${{ needs.resolve-versions.outputs.branch_version }}` |
+            | **上游 Kazumi 版本** | `${{ needs.resolve-versions.outputs.upstream_version }}` |
+            | **Commit** | `${{ github.sha }}` |
+
+            **📦 包含平台：** Android (armeabi-v7a / arm64-v8a / x86_64) · Windows (ZIP / MSIX) · iOS · macOS · Linux (TAR / DEB)
+          files: release_assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
