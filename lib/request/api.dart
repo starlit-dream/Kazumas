@@ -29,16 +29,16 @@ class Api {
   /// 规则API级别
   static const int apiLevel = 6;
   /// 项目主页
-  static const String projectUrl = "https://github.com/starlit-dream/Kazumas";
+  static const String projectUrl = "https://kazumi.app/";
   /// Github 项目主页
-  static const String sourceUrl = "https://github.com/starlit-dream/Kazumas";
+  static const String sourceUrl = "https://github.com/Predidit/Kazumi";
   /// 图标作者
   static const String iconUrl = "https://www.pixiv.net/users/66219277";
   /// 规则仓库
   static const String pluginShop = 'https://raw.githubusercontent.com/Predidit/KazumiRules/main/';
   /// 在线升级
   static const String latestApp =
-      'https://api.github.com/repos/starlit-dream/Kazumas/releases/latest'; 
+      'https://api.github.com/repos/Predidit/Kazumi/releases/latest'; 
   /// Github镜像
   static const String gitMirror = 'https://ghfast.top/';
   /// 弹弹官网

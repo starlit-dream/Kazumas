@@ -293,7 +293,7 @@ class _AboutPageState extends State<AboutPage> {
             const Divider(height: 1),
             _buildVersionTile(
               icon: Icons.new_releases_outlined,
-              title: '构建标识',
+              title: '分支版本号',
               value: Api.branchVersion,
               copyable: true,
             ),
