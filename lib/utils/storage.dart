@@ -432,6 +432,7 @@ class SettingBoxKey {
       enableGitProxy = 'enableGitProxy',
       enableSystemProxy = 'enableSystemProxy',
       defaultStartupPage = 'defaultStartupPage',
+
       /// Deprecated
       isWideScreen = 'isWideScreen',
       webDavEnable = 'webDavEnable',
@@ -473,7 +474,5 @@ class SettingBoxKey {
       bangumiSyncEnable = 'bangumiSyncEnable',
       bangumiSyncPriority = 'bangumiSyncPriority',
       bangumiImmediateSyncToastEnable = 'bangumiImmediateSyncToastEnable',
-      watchedPopupEnabled = 'watchedPopupEnabled',
-      watchedAutoRecord = 'watchedAutoRecord',
-      watchedAutoRecordThreshold = 'watchedAutoRecordThreshold';
+      brightnessVolumeGesture = 'brightnessVolumeGesture';
 }
