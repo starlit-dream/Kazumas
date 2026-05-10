@@ -475,5 +475,6 @@ class SettingBoxKey {
       bangumiImmediateSyncToastEnable = 'bangumiImmediateSyncToastEnable',
       watchedPopupEnabled = 'watchedPopupEnabled',
       watchedAutoRecord = 'watchedAutoRecord',
-      watchedAutoRecordThreshold = 'watchedAutoRecordThreshold';
+      watchedAutoRecordThreshold = 'watchedAutoRecordThreshold',
+      watchNow = 'watchNow';
 }

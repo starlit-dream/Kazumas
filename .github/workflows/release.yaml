@@ -393,9 +393,8 @@ jobs:
           VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
           npm install --global create-dmg 2>/dev/null || true
           # Try create-dmg first
-          create-dmg build/macos/Build/Products/Release/Kazumas.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
+          create-dmg build/macos/Build/Products/Release/Kazumi.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
           create-dmg build/macos/Build/Products/Release/Runner.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
-          create-dgm build/macos/Build/Products/Release/Kazumas.app 2>/dev/null || \
           echo "DMG creation failed, will use .app bundle instead"
       - name: Rename DMG or fallback to .app
         run: |
@@ -407,7 +406,7 @@ jobs:
           else
             echo "No DMG found, creating zip from .app bundle"
             ditto -c -k --sequesterRsrc --keepParent \
-              build/macos/Build/Products/Release/Kazumas.app \
+              build/macos/Build/Products/Release/Kazumi.app \
               "Kazumas_macos_${VERSION}.zip" 2>/dev/null || \
             ditto -c -k --sequesterRsrc --keepParent \
               build/macos/Build/Products/Release/Runner.app \

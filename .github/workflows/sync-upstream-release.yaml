@@ -63,7 +63,7 @@ jobs:
           git push -f origin "$SYNC_BRANCH"
 
           cat > /tmp/pr_body.md << EOM
-          自动同步上游 [Predidit/Kazumi]($LATEST_TAG)
+          自动同步上游 [Predidit/Kazumi](https://github.com/Predidit/Kazumi/releases/tag/$LATEST_TAG)
           
           由 GitHub Actions 自动创建，同步上游(https://github.com/Predidit/Kazumi/releases/tag/$LATEST_TAG)。
 

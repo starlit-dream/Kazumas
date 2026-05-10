@@ -3,15 +3,20 @@ import 'dart:ui';
 import 'package:kazumi/utils/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
+import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
 import 'package:kazumi/bean/widget/embedded_native_control_area.dart';
 import 'package:kazumi/bean/widget/progress_editor.dart';
+import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:kazumi/utils/constants.dart';
 import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/pages/history/history_controller.dart';
 import 'package:kazumi/pages/info/info_controller.dart';
 import 'package:kazumi/bean/card/bangumi_info_card.dart';
 import 'package:kazumi/pages/info/source_sheet.dart';
+import 'package:kazumi/modules/search/plugin_search_module.dart';
+import 'package:kazumi/plugins/plugins.dart';
 import 'package:kazumi/plugins/plugins_controller.dart';
 import 'package:kazumi/pages/video/video_controller.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
@@ -37,9 +42,11 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   final VideoPageController videoPageController =
       Modular.get<VideoPageController>();
   final PluginsController pluginsController = Modular.get<PluginsController>();
+  final Box setting = GStorage.setting;
   late TabController sourceTabController;
   late TabController infoTabController;
   late bool showRating;
+  late bool watchNow;
 
   bool commentsIsLoading = false;
   bool charactersIsLoading = false;
@@ -170,6 +177,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
         TabController(length: pluginsController.pluginList.length, vsync: this);
     infoTabController = TabController(length: 5, vsync: this);
     showRating = GStorage.setting.get(SettingBoxKey.showRating, defaultValue: true);
+    watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
     infoTabController.addListener(() {
       int index = infoTabController.index;
       if (index == 1 &&
@@ -236,12 +244,122 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     });
   }
 
+  void _showSourceSheet() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: (MediaQuery.sizeOf(context).height >=
+                LayoutBreakpoint.compact['height']!)
+            ? MediaQuery.of(context).size.height * 3 / 4
+            : MediaQuery.of(context).size.height,
+        maxWidth: (MediaQuery.sizeOf(context).width >=
+                LayoutBreakpoint.medium['width']!)
+            ? MediaQuery.of(context).size.width * 9 / 16
+            : MediaQuery.of(context).size.width,
+      ),
+      clipBehavior: Clip.antiAlias,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      showDragHandle: true,
+      context: context,
+      builder: (context) {
+        return SourceSheet(tabController: sourceTabController, infoController: infoController);
+      },
+    );
+  }
+
   Future<void> queryBangumiInfoByID(int id, {String type = "init"}) async {
     try {
       await infoController.queryBangumiInfoByID(id, type: type);
       setState(() {});
     } catch (e) {
       KazumiLogger().e('InfoController: failed to query bangumi info by ID', error: e);
+    }
+  }
+
+  Future<void> _watchNow() async {
+    final historyController = Modular.get<HistoryController>();
+    final pluginList = pluginsController.pluginList.toList();
+    final keyword = infoController.bangumiItem.nameCn.isEmpty
+        ? infoController.bangumiItem.name
+        : infoController.bangumiItem.nameCn;
+
+    KazumiDialog.showLoading(
+      msg: '正在搜索源...',
+      barrierDismissible: true,
+      onDismiss: () {},
+    );
+
+    final results = <PluginSearchResponse>[];
+
+    await Future.wait(pluginList.map((plugin) async {
+      try {
+        final result = await plugin.queryBangumi(keyword, shouldRethrow: true);
+        if (result.data.isNotEmpty) {
+          pluginsController.validityTracker.markSearchValid(plugin.name);
+          results.add(result);
+        }
+      } on CaptchaRequiredException {
+      } on NoResultException {
+      } on SearchErrorException {
+      } catch (e) {
+      }
+    }));
+
+    if (results.isEmpty || !mounted) {
+      KazumiDialog.dismiss();
+      if (!mounted) return;
+      _showSourceSheet();
+      return;
+    }
+
+    PluginSearchResponse? bestResult;
+    final bangumiId = infoController.bangumiItem.id;
+    for (final history in historyController.histories) {
+      if (history.bangumiItem.id == bangumiId) {
+        for (final result in results) {
+          if (result.pluginName == history.adapterName) {
+            bestResult = result;
+            break;
+          }
+        }
+        if (bestResult != null) break;
+      }
+    }
+
+    bestResult ??= results.first;
+
+    if (!mounted) return;
+
+    KazumiDialog.dismiss();
+    KazumiDialog.showLoading(
+      msg: '获取线路中...',
+      barrierDismissible: Utils.isDesktop(),
+      onDismiss: () {
+        videoPageController.cancelQueryRoads();
+      },
+    );
+
+    final selected = bestResult;
+    final plugin = pluginList.firstWhere((p) => p.name == selected.pluginName);
+    final searchItem = selected.data.first;
+
+    videoPageController.bangumiItem = infoController.bangumiItem;
+    videoPageController.currentPlugin = plugin;
+    videoPageController.title = searchItem.name;
+    videoPageController.src = searchItem.src;
+
+    try {
+      await videoPageController.queryRoads(searchItem.src, plugin.name);
+      KazumiDialog.dismiss();
+      if (mounted) {
+        await Modular.to.pushNamed('/video/');
+      }
+    } catch (_) {
+      KazumiLogger().w('WatchNow: failed to query video playlist');
+      KazumiDialog.dismiss();
+      if (mounted) {
+        KazumiDialog.showToast(message: '获取线路失败，请重试');
+      }
     }
   }
 
@@ -575,31 +693,19 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
               );
             }),
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: Text('开始观看'),
-            onPressed: () async {
-              showModalBottomSheet(
-                isScrollControlled: true,
-                constraints: BoxConstraints(
-                  maxHeight: (MediaQuery.sizeOf(context).height >=
-                          LayoutBreakpoint.compact['height']!)
-                      ? MediaQuery.of(context).size.height * 3 / 4
-                      : MediaQuery.of(context).size.height,
-                  maxWidth: (MediaQuery.sizeOf(context).width >=
-                          LayoutBreakpoint.medium['width']!)
-                      ? MediaQuery.of(context).size.width * 9 / 16
-                      : MediaQuery.of(context).size.width,
-                ),
-                clipBehavior: Clip.antiAlias,
-                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-                showDragHandle: true,
-                context: context,
-                builder: (context) {
-                  return SourceSheet(tabController: sourceTabController, infoController: infoController);
-                },
-              );
-            },
+          floatingActionButton: GestureDetector(
+            onLongPress: _showSourceSheet,
+            child: FloatingActionButton.extended(
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: Text('开始观看'),
+              onPressed: () async {
+                if (watchNow) {
+                  await _watchNow();
+                  return;
+                }
+                _showSourceSheet();
+              },
+            ),
           ),
         ),
       ),
