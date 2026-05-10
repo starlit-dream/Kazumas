@@ -140,11 +140,35 @@ class BangumiHTTP {
   }
 
   static Future<void> updateUserRating(int subjectId, int rating) async {
+    await updateUserReview(subjectId: subjectId, rating: rating);
+  }
+
+  /// 更新用户对某条目的整体评价：评分、短评、标签、私密、收藏类型。
+  ///
+  /// 任意参数传 null 表示不修改该字段；comment 传空字符串表示清空短评。
+  /// type 通常一并传 2（看过）以兜底用户尚未把番剧标记为「看过」的情况。
+  static Future<void> updateUserReview({
+    required int subjectId,
+    int? rating,
+    String? comment,
+    List<String>? tags,
+    bool? private,
+    int? type,
+  }) async {
+    final body = <String, dynamic>{};
+    if (rating != null) body['rate'] = rating;
+    if (comment != null) body['comment'] = comment;
+    if (tags != null) body['tags'] = tags;
+    if (private != null) body['private'] = private;
+    if (type != null) body['type'] = type;
+    if (body.isEmpty) {
+      return;
+    }
     await Request().patch(
       Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiMyCollection, [subjectId]),
-      data: {'rate': rating},
+      data: body,
       options: _authOptions(),
-      extra: {'customError': 'Bangumi 评分更新失败'},
+      extra: {'customError': 'Bangumi 评价提交失败'},
       shouldRethrow: true,
     );
   }

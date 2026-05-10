@@ -10,10 +10,17 @@
           - ready_for_review
         paths-ignore:
           - 'static/**'
+          - 'plans/**'
           - '**.md'
           - '.gitignore'
           - '.github/ISSUE_TEMPLATE/**'
           - 'fastlane/**'
+          - '.vscode/**'
+          - '.idea/**'
+          - '.kilo/**'
+          - '.sisyphus/**'
+          - 'kazumi.iml'
+          - 'devtools_options.yaml'
       workflow_dispatch:
         inputs:
           logLevel:
@@ -50,7 +57,11 @@
             required: false
             default: false
             type: boolean
-    
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+
     jobs:
       changes:
         if: ${{ ! github.event.pull_request.draft }}
@@ -113,6 +124,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - name: Get Flutter dependencies
             run: flutter pub get
             shell: bash
@@ -123,14 +135,14 @@
             run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
             shell: bash
           - name: Package android build output
-            run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Kazumi_android_canary.apk
+            run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Kazumas_android_canary.apk
             shell: bash
 
           - name: Upload android outputs
             uses: actions/upload-artifact@v4
             with:
               name: android_outputs
-              path: Kazumi_android_*.apk
+              path: Kazumas_android_*.apk
 
       flutter-build-windows:
         needs: changes
@@ -150,6 +162,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - name: Set up Java
             uses: actions/setup-java@v4
             with:
@@ -157,14 +170,14 @@
               java-version: '18'
           - run: flutter pub get
           - run: flutter build windows --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
-          - run: Compress-Archive build/windows/x64/runner/Release/* Kazumi_windows_canary.zip
+          - run: Compress-Archive build/windows/x64/runner/Release/* Kazumas_windows_canary.zip
           - name: Upload windows outputs
             id: unsigned-windows-packet-artifacts
             uses: actions/upload-artifact@v4
             with:
               name: windows_outputs
               path: |
-                Kazumi_windows_*.zip
+                Kazumas_windows_*.zip
           # - name: Build unsigned msix
           #   run: dart run msix:create
           # - name: Upload windows msix ouputs
@@ -182,7 +195,7 @@
           #   with:
           #     api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
           #     organization-id: 'fa047255-4772-4be1-b14f-5cfa62635877'
-          #     project-slug: 'Kazumi'
+          #     project-slug: 'Kazumas'
           #     signing-policy-slug: 'test-signing'
           #     artifact-configuration-slug: 'MSIX'
           #     github-artifact-id: '${{ steps.unsigned-windows-msix-artifacts.outputs.artifact-id }}'
@@ -213,6 +226,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - run: flutter pub get
           - name: Build IPA
             run: |
@@ -225,12 +239,12 @@
               mkdir Payload
               cp -R build/ios/iphoneos/Runner.app Payload/Runner.app
               find Payload/Runner.app/Frameworks -type d -name "*.framework" -exec codesign --force --sign - --preserve-metadata=identifier,entitlements {} \;
-              zip -q -r Kazumi_ios_canary_no_sign.ipa Payload
+              zip -q -r Kazumas_ios_canary_no_sign.ipa Payload
           - name: Upload iOS build
             uses: actions/upload-artifact@v4
             with:
               name: ios_outputs
-              path: Kazumi_ios_*.ipa
+              path: Kazumas_ios_*.ipa
 
       flutter-build-macos:
         needs: changes
@@ -247,35 +261,36 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - run: flutter pub get
           - run: flutter build macos --release --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
-      - name: Create DMG
-        continue-on-error: true
-        run: |
-          npm install --global create-dmg 2>/dev/null || true
-          create-dmg build/macos/Build/Products/Release/Kazumi.app --dmg-title="Kazumi canary" 2>/dev/null || \
-          create-dmg build/macos/Build/Products/Release/Runner.app --dmg-title="Kazumi canary" 2>/dev/null || \
-          echo "DMG creation failed, will fallback to .app zip"
-      - name: Rename DMG or fallback
-        run: |
-          if ls Kazumi*.dmg 1>/dev/null 2>&1; then
-            mv Kazumi*.dmg Kazumi_macos_canary.dmg
-          else
-            echo "No DMG found, zipping .app bundle instead"
-            ditto -c -k --sequesterRsrc --keepParent \
-              build/macos/Build/Products/Release/Kazumi.app \
-              Kazumi_macos_canary.zip 2>/dev/null || \
-            ditto -c -k --sequesterRsrc --keepParent \
-              build/macos/Build/Products/Release/Runner.app \
-              Kazumi_macos_canary.zip
-          fi
-      - name: Upload MacOS build
-        uses: actions/upload-artifact@v4
-        with:
-          name: macos_outputs
-          path: |
-            Kazumi_macos_*.dmg
-            Kazumi_macos_*.zip
+          - name: Create DMG
+            continue-on-error: true
+            run: |
+              npm install --global create-dmg 2>/dev/null || true
+              create-dmg build/macos/Build/Products/Release/Kazumas.app --dmg-title="Kazumas canary" 2>/dev/null || \
+              create-dmg build/macos/Build/Products/Release/Runner.app --dmg-title="Kazumas canary" 2>/dev/null || \
+              echo "DMG creation failed, will fallback to .app zip"
+          - name: Rename DMG or fallback
+            run: |
+              if ls Kazumas*.dmg 1>/dev/null 2>&1; then
+                mv Kazumas*.dmg Kazumas_macos_canary.dmg
+              else
+                echo "No DMG found, zipping .app bundle instead"
+                ditto -c -k --sequesterRsrc --keepParent \
+                  build/macos/Build/Products/Release/Kazumas.app \
+                  Kazumas_macos_canary.zip 2>/dev/null || \
+                ditto -c -k --sequesterRsrc --keepParent \
+                  build/macos/Build/Products/Release/Runner.app \
+                  Kazumas_macos_canary.zip
+              fi
+          - name: Upload MacOS build
+            uses: actions/upload-artifact@v4
+            with:
+              name: macos_outputs
+              path: |
+                Kazumas_macos_*.dmg
+                Kazumas_macos_*.zip
 
       flutter-build-linux:
         needs: changes
@@ -309,6 +324,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - name: Get Flutter dependencies
             run: flutter pub get
             shell: bash
@@ -327,40 +343,40 @@
           - name: Package linux build output
             run: |
               # Tarball package
-              tar -zcvf Kazumi_linux_canary.tar.gz -C build/linux/x64/release/bundle .
+              tar -zcvf Kazumas_linux_canary.tar.gz -C build/linux/x64/release/bundle .
 
               # Debian package
-              mkdir Kazumi_linux_canary_amd64
-              cd Kazumi_linux_canary_amd64
-              mkdir -p opt/Kazumi
+              mkdir Kazumas_linux_canary_amd64
+              cd Kazumas_linux_canary_amd64
+              mkdir -p opt/Kazumas
               mkdir -p usr/share/applications
               mkdir -p usr/share/icons/hicolor/512x512/apps
-              cp -r ../build/linux/x64/release/bundle/* opt/Kazumi
+              cp -r ../build/linux/x64/release/bundle/* opt/Kazumas
               cp -r ../assets/linux/DEBIAN .
               chmod 0755 DEBIAN/postinst
               chmod 0755 DEBIAN/postrm
 
               cat>DEBIAN/control<<EOF
               Maintainer: madoka773 <valigarmanda55@gmail.com>
-              Package: Kazumi
+              Package: Kazumas
               Version: 0.0.1
               Section: x11
               Priority: optional
               Architecture: amd64
               Essential: no
               Installed-Size: 34648
-              Description: Watch Animes online with danmaku support.
-              Homepage: https://github.com/Predidit/Kazumi
+              Description: Kazumas - A Kazumi fork with additional features.
+              Homepage: https://github.com/starlit-dream/Kazumas
               Depends: libayatana-appindicator3-1,
                        gir1.2-ayatanaappindicator3-0.1,
                        libwebkit2gtk-4.1-0
               EOF
 
-              cp ../assets/linux/io.github.Predidit.Kazumi.desktop usr/share/applications
-              cp ../assets/images/logo/logo_linux.png usr/share/icons/hicolor/512x512/apps/io.github.Predidit.Kazumi.png
+              cp ../assets/linux/io.github.starlitdream.Kazumas.desktop usr/share/applications
+              cp ../assets/images/logo/logo_linux.png usr/share/icons/hicolor/512x512/apps/io.github.starlitdream.Kazumas.png
 
               cd ..
-              dpkg-deb --build --root-owner-group Kazumi_linux_canary_amd64
+              dpkg-deb --build --root-owner-group Kazumas_linux_canary_amd64
             shell: bash
 
           - name: Upload linux outputs
@@ -368,5 +384,5 @@
             with:
               name: linux_outputs
               path: |
-                Kazumi_linux_*.tar.gz
-                Kazumi_linux_*.deb
+                Kazumas_linux_*.tar.gz
+                Kazumas_linux_*.deb

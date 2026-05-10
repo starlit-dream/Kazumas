@@ -3,15 +3,21 @@ import 'dart:ui';
 import 'package:kazumi/utils/utils.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
+import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
 import 'package:kazumi/bean/widget/embedded_native_control_area.dart';
 import 'package:kazumi/bean/widget/progress_editor.dart';
+import 'package:kazumi/bean/widget/finish_review_sheet.dart';
+import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:kazumi/utils/constants.dart';
 import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/pages/history/history_controller.dart';
 import 'package:kazumi/pages/info/info_controller.dart';
 import 'package:kazumi/bean/card/bangumi_info_card.dart';
 import 'package:kazumi/pages/info/source_sheet.dart';
+import 'package:kazumi/modules/search/plugin_search_module.dart';
+import 'package:kazumi/plugins/plugins.dart';
 import 'package:kazumi/plugins/plugins_controller.dart';
 import 'package:kazumi/pages/video/video_controller.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
@@ -37,9 +43,11 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   final VideoPageController videoPageController =
       Modular.get<VideoPageController>();
   final PluginsController pluginsController = Modular.get<PluginsController>();
+  final Box setting = GStorage.setting;
   late TabController sourceTabController;
   late TabController infoTabController;
   late bool showRating;
+  late bool watchNow;
 
   bool commentsIsLoading = false;
   bool charactersIsLoading = false;
@@ -177,6 +185,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
         TabController(length: pluginsController.pluginList.length, vsync: this);
     infoTabController = TabController(length: 5, vsync: this);
     showRating = GStorage.setting.get(SettingBoxKey.showRating, defaultValue: true);
+    watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
     infoTabController.addListener(() {
       int index = infoTabController.index;
       if (index == 1 &&
@@ -215,6 +224,18 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     super.dispose();
   }
 
+  Future<void> _openFinishReviewSheet() async {
+    final submitted = await showFinishReviewSheet(
+      context,
+      bangumiItem: infoController.bangumiItem,
+      autoTriggered: false,
+    );
+    if (submitted) {
+      await infoController.refreshUserReview();
+      if (mounted) setState(() {});
+    }
+  }
+
   void _showProgressEditor() {
     showModalBottomSheet(
       isScrollControlled: true,
@@ -243,12 +264,122 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     });
   }
 
+  void _showSourceSheet() {
+    showModalBottomSheet(
+      isScrollControlled: true,
+      constraints: BoxConstraints(
+        maxHeight: (MediaQuery.sizeOf(context).height >=
+                LayoutBreakpoint.compact['height']!)
+            ? MediaQuery.of(context).size.height * 3 / 4
+            : MediaQuery.of(context).size.height,
+        maxWidth: (MediaQuery.sizeOf(context).width >=
+                LayoutBreakpoint.medium['width']!)
+            ? MediaQuery.of(context).size.width * 9 / 16
+            : MediaQuery.of(context).size.width,
+      ),
+      clipBehavior: Clip.antiAlias,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      showDragHandle: true,
+      context: context,
+      builder: (context) {
+        return SourceSheet(tabController: sourceTabController, infoController: infoController);
+      },
+    );
+  }
+
   Future<void> queryBangumiInfoByID(int id, {String type = "init"}) async {
     try {
       await infoController.queryBangumiInfoByID(id, type: type);
       setState(() {});
     } catch (e) {
       KazumiLogger().e('InfoController: failed to query bangumi info by ID', error: e);
+    }
+  }
+
+  Future<void> _watchNow() async {
+    final historyController = Modular.get<HistoryController>();
+    final pluginList = pluginsController.pluginList.toList();
+    final keyword = infoController.bangumiItem.nameCn.isEmpty
+        ? infoController.bangumiItem.name
+        : infoController.bangumiItem.nameCn;
+
+    KazumiDialog.showLoading(
+      msg: '正在搜索源...',
+      barrierDismissible: true,
+      onDismiss: () {},
+    );
+
+    final results = <PluginSearchResponse>[];
+
+    await Future.wait(pluginList.map((plugin) async {
+      try {
+        final result = await plugin.queryBangumi(keyword, shouldRethrow: true);
+        if (result.data.isNotEmpty) {
+          pluginsController.validityTracker.markSearchValid(plugin.name);
+          results.add(result);
+        }
+      } on CaptchaRequiredException {
+      } on NoResultException {
+      } on SearchErrorException {
+      } catch (e) {
+      }
+    }));
+
+    if (results.isEmpty || !mounted) {
+      KazumiDialog.dismiss();
+      if (!mounted) return;
+      _showSourceSheet();
+      return;
+    }
+
+    PluginSearchResponse? bestResult;
+    final bangumiId = infoController.bangumiItem.id;
+    for (final history in historyController.histories) {
+      if (history.bangumiItem.id == bangumiId) {
+        for (final result in results) {
+          if (result.pluginName == history.adapterName) {
+            bestResult = result;
+            break;
+          }
+        }
+        if (bestResult != null) break;
+      }
+    }
+
+    bestResult ??= results.first;
+
+    if (!mounted) return;
+
+    KazumiDialog.dismiss();
+    KazumiDialog.showLoading(
+      msg: '获取线路中...',
+      barrierDismissible: Utils.isDesktop(),
+      onDismiss: () {
+        videoPageController.cancelQueryRoads();
+      },
+    );
+
+    final selected = bestResult;
+    final plugin = pluginList.firstWhere((p) => p.name == selected.pluginName);
+    final searchItem = selected.data.first;
+
+    videoPageController.bangumiItem = infoController.bangumiItem;
+    videoPageController.currentPlugin = plugin;
+    videoPageController.title = searchItem.name;
+    videoPageController.src = searchItem.src;
+
+    try {
+      await videoPageController.queryRoads(searchItem.src, plugin.name);
+      KazumiDialog.dismiss();
+      if (mounted) {
+        await Modular.to.pushNamed('/video/');
+      }
+    } catch (_) {
+      KazumiLogger().w('WatchNow: failed to query video playlist');
+      KazumiDialog.dismiss();
+      if (mounted) {
+        KazumiDialog.showToast(message: '获取线路失败，请重试');
+      }
     }
   }
 
@@ -538,6 +669,162 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                               ),
                                             );
                                           }),
+                                        // 我的评价（仅登录态显示）
+                                        if (BangumiAuth.isLoggedIn &&
+                                            !infoController.isLoading)
+                                          Observer(builder: (context) {
+                                            final hasRating =
+                                                (infoController.userRating ?? 0) >
+                                                    0;
+                                            final hasComment = infoController
+                                                .userComment.isNotEmpty;
+                                            final hasAny =
+                                                hasRating || hasComment;
+                                            return Padding(
+                                              padding:
+                                                  const EdgeInsets.only(top: 8),
+                                              child: SizedBox(
+                                                width: MediaQuery.of(context)
+                                                            .size
+                                                            .width >
+                                                        950
+                                                    ? 950
+                                                    : MediaQuery.of(context)
+                                                            .size
+                                                            .width -
+                                                        32,
+                                                child: GestureDetector(
+                                                  onTap: _openFinishReviewSheet,
+                                                  child: Card(
+                                                    elevation: 0,
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .surfaceContainerHighest
+                                                        .withValues(
+                                                            alpha: 0.6),
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets
+                                                              .symmetric(
+                                                              horizontal: 16,
+                                                              vertical: 10),
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(
+                                                            hasAny
+                                                                ? Icons
+                                                                    .rate_review_rounded
+                                                                : Icons
+                                                                    .edit_note_rounded,
+                                                            size: 20,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .primary,
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          Expanded(
+                                                            child: Column(
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
+                                                              children: [
+                                                                Row(
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .spaceBetween,
+                                                                  children: [
+                                                                    Text(
+                                                                      hasAny
+                                                                          ? '我的评价'
+                                                                          : '写短评',
+                                                                      style: TextStyle(
+                                                                        fontSize:
+                                                                            13,
+                                                                        color: Theme.of(
+                                                                                context)
+                                                                            .colorScheme
+                                                                            .onSurfaceVariant,
+                                                                      ),
+                                                                    ),
+                                                                    if (hasRating)
+                                                                      Text(
+                                                                        '${infoController.userRating} / 10',
+                                                                        style:
+                                                                            TextStyle(
+                                                                          fontSize:
+                                                                              12,
+                                                                          fontWeight:
+                                                                              FontWeight.w600,
+                                                                          color: Theme.of(context)
+                                                                              .colorScheme
+                                                                              .primary,
+                                                                        ),
+                                                                      ),
+                                                                  ],
+                                                                ),
+                                                                if (hasComment) ...[
+                                                                  const SizedBox(
+                                                                      height: 4),
+                                                                  Text(
+                                                                    infoController
+                                                                        .userComment,
+                                                                    maxLines: 2,
+                                                                    overflow:
+                                                                        TextOverflow
+                                                                            .ellipsis,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          12,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
+                                                                    ),
+                                                                  ),
+                                                                ] else if (!hasRating) ...[
+                                                                  const SizedBox(
+                                                                      height: 4),
+                                                                  Text(
+                                                                    '点击给这部番剧评分或留下短评',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          12,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          Icon(
+                                                            Icons
+                                                                .chevron_right,
+                                                            size: 18,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }),
                                       ],
                                     ),
                                   ),
@@ -582,31 +869,19 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
               );
             }),
           ),
-          floatingActionButton: FloatingActionButton.extended(
-            icon: const Icon(Icons.play_arrow_rounded),
-            label: Text('开始观看'),
-            onPressed: () async {
-              showModalBottomSheet(
-                isScrollControlled: true,
-                constraints: BoxConstraints(
-                  maxHeight: (MediaQuery.sizeOf(context).height >=
-                          LayoutBreakpoint.compact['height']!)
-                      ? MediaQuery.of(context).size.height * 3 / 4
-                      : MediaQuery.of(context).size.height,
-                  maxWidth: (MediaQuery.sizeOf(context).width >=
-                          LayoutBreakpoint.medium['width']!)
-                      ? MediaQuery.of(context).size.width * 9 / 16
-                      : MediaQuery.of(context).size.width,
-                ),
-                clipBehavior: Clip.antiAlias,
-                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-                showDragHandle: true,
-                context: context,
-                builder: (context) {
-                  return SourceSheet(tabController: sourceTabController, infoController: infoController);
-                },
-              );
-            },
+          floatingActionButton: GestureDetector(
+            onLongPress: _showSourceSheet,
+            child: FloatingActionButton.extended(
+              icon: const Icon(Icons.play_arrow_rounded),
+              label: Text('开始观看'),
+              onPressed: () async {
+                if (watchNow) {
+                  await _watchNow();
+                  return;
+                }
+                _showSourceSheet();
+              },
+            ),
           ),
         ),
       ),

@@ -475,4 +475,10 @@ class SettingBoxKey {
       bangumiSyncPriority = 'bangumiSyncPriority',
       bangumiImmediateSyncToastEnable = 'bangumiImmediateSyncToastEnable',
       brightnessVolumeGesture = 'brightnessVolumeGesture';
+      watchedPopupEnabled = 'watchedPopupEnabled',
+      watchedAutoRecord = 'watchedAutoRecord',
+      watchedAutoRecordThreshold = 'watchedAutoRecordThreshold',
+      watchNow = 'watchNow',
+      finishReviewPopupEnabled = 'finishReviewPopupEnabled',
+      finishReviewSkippedSubjects = 'finishReviewSkippedSubjects';
 }

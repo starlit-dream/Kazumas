@@ -35,6 +35,9 @@ class BangumiSubjectCollection {
   final int type;
   final int epStatus;
   final int? rate;
+  final String comment;
+  final List<String> tags;
+  final bool private;
   final BangumiAuthCollectionSubject? subject;
 
   const BangumiSubjectCollection({
@@ -42,15 +45,25 @@ class BangumiSubjectCollection {
     required this.type,
     required this.epStatus,
     this.rate,
+    this.comment = '',
+    this.tags = const [],
+    this.private = false,
     this.subject,
   });
 
   factory BangumiSubjectCollection.fromJson(Map<String, dynamic> json) {
+    final rawTags = json['tags'];
+    final List<String> parsedTags = rawTags is List
+        ? rawTags.whereType<String>().toList()
+        : const <String>[];
     return BangumiSubjectCollection(
       subjectId: json['subject_id'] ?? 0,
       type: json['type'] ?? 0,
       epStatus: json['ep_status'] ?? 0,
       rate: json['rate'] as int?,
+      comment: (json['comment'] ?? '').toString(),
+      tags: parsedTags,
+      private: json['private'] == true,
       subject: json['subject'] is Map<String, dynamic>
           ? BangumiAuthCollectionSubject.fromJson(
               Map<String, dynamic>.from(json['subject']))

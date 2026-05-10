@@ -20,6 +20,11 @@ on:
         required: false
         default: ''
 
+# 发版流程不允许中途取消：tag 触发后必须把所有平台跑完
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   # ============================================================
   # 中心化版本解析 - 所有平台 job 依赖此 job 获取版本号
@@ -83,14 +88,20 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - run: flutter pub get
         shell: bash
       - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
         run: |
-          sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-          sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-          sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-          sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+          sed -i "s|kvpx7qkqjh|${DANDANAPI_APPID}|g" lib/utils/mortis.dart
+          sed -i "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
+          sed -i "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
+          sed -i "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build Flutter for Android
         run: |
           flutter build apk --split-per-abi --target-platform android-arm,android-arm64,android-x64 \
@@ -133,6 +144,7 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
@@ -260,14 +272,20 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - run: flutter pub get
         shell: bash
       - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
         run: |
-          sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-          sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-          sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-          sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+          sed -i "s|kvpx7qkqjh|${DANDANAPI_APPID}|g" lib/utils/mortis.dart
+          sed -i "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
+          sed -i "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
+          sed -i "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build Flutter for Linux
         run: flutter build linux --dart-define=BRANCH_VERSION=${{ needs.resolve-versions.outputs.branch_version }} --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
@@ -334,13 +352,19 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - run: flutter pub get
       - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
         run: |
-          sed -i '' "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-          sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-          sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-          sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s|kvpx7qkqjh|${DANDANAPI_APPID}|g" lib/utils/mortis.dart
+          sed -i '' "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
+          sed -i '' "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build IPA
         run: |
           flutter build ios --release --no-codesign \
@@ -374,13 +398,19 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - run: flutter pub get
       - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
         run: |
-          sed -i '' "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-          sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-          sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-          sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s|kvpx7qkqjh|${DANDANAPI_APPID}|g" lib/utils/mortis.dart
+          sed -i '' "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
+          sed -i '' "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build macOS app
         run: |
           flutter build macos --release \
@@ -393,9 +423,8 @@ jobs:
           VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
           npm install --global create-dmg 2>/dev/null || true
           # Try create-dmg first
-          create-dmg build/macos/Build/Products/Release/Kazumas.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
+          create-dmg build/macos/Build/Products/Release/Kazumi.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
           create-dmg build/macos/Build/Products/Release/Runner.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
-          create-dgm build/macos/Build/Products/Release/Kazumas.app 2>/dev/null || \
           echo "DMG creation failed, will use .app bundle instead"
       - name: Rename DMG or fallback to .app
         run: |
@@ -407,7 +436,7 @@ jobs:
           else
             echo "No DMG found, creating zip from .app bundle"
             ditto -c -k --sequesterRsrc --keepParent \
-              build/macos/Build/Products/Release/Kazumas.app \
+              build/macos/Build/Products/Release/Kazumi.app \
               "Kazumas_macos_${VERSION}.zip" 2>/dev/null || \
             ditto -c -k --sequesterRsrc --keepParent \
               build/macos/Build/Products/Release/Runner.app \
@@ -542,6 +571,26 @@ jobs:
           ls -la release_assets/
         shell: bash
 
+      # 读取手写发版封面（RELEASE_NOTES.md），用于 release body 顶部"本次更新亮点"段
+      - name: Read manual release notes
+        id: manual_notes
+        run: |
+          if [ -f RELEASE_NOTES.md ] && [ -s RELEASE_NOTES.md ]; then
+            echo "Found RELEASE_NOTES.md, will inject into release body."
+            {
+              echo "section<<RELEASE_NOTES_EOF"
+              echo ""
+              echo "---"
+              echo ""
+              cat RELEASE_NOTES.md
+              echo "RELEASE_NOTES_EOF"
+            } >> "$GITHUB_OUTPUT"
+          else
+            echo "RELEASE_NOTES.md missing or empty, skip manual notes section."
+            echo "section=" >> "$GITHUB_OUTPUT"
+          fi
+        shell: bash
+
       # 获取上游更新日志
       - name: Fetch upstream release notes
         id: upstream_notes
@@ -584,6 +633,7 @@ jobs:
 
             > 基于上游 Kazumi ${{ needs.resolve-versions.outputs.upstream_version }} 构建
             > Built on top of upstream Kazumi ${{ needs.resolve-versions.outputs.upstream_version }}
+            ${{ steps.manual_notes.outputs.section }}
 
             ---
 

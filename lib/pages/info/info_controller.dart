@@ -51,6 +51,12 @@ abstract class _InfoController with Store {
   int? userRating;
 
   @observable
+  String userComment = '';
+
+  @observable
+  bool userCommentPrivate = false;
+
+  @observable
   bool episodeProgressLoading = false;
 
   @observable
@@ -97,6 +103,23 @@ abstract class _InfoController with Store {
     if (BangumiAuth.isLoggedIn) {
       final collection = await BangumiHTTP.getUserSubjectCollection(bangumiItem.id);
       userRating = collection?.rate;
+      userComment = collection?.comment ?? '';
+      userCommentPrivate = collection?.private ?? false;
+    }
+  }
+
+  /// 重新拉取用户对当前条目的评分/短评/隐私设置（提交评价后调用以刷新 UI）。
+  Future<void> refreshUserReview() async {
+    if (!BangumiAuth.isLoggedIn) return;
+    try {
+      final collection =
+          await BangumiHTTP.getUserSubjectCollection(bangumiItem.id);
+      userRating = collection?.rate;
+      userComment = collection?.comment ?? '';
+      userCommentPrivate = collection?.private ?? false;
+    } catch (e) {
+      KazumiLogger().w('InfoController: failed to refresh user review',
+          error: e);
     }
   }
 

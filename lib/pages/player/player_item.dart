@@ -18,6 +18,9 @@ import 'package:kazumi/pages/video/video_controller.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
+import 'package:kazumi/bean/widget/capsule_progress_popup.dart';
+import 'package:kazumi/bean/widget/finish_review_sheet.dart';
+import 'package:kazumi/utils/finish_review_trigger.dart';
 import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:kazumi/pages/history/history_controller.dart';
@@ -115,6 +118,12 @@ class _PlayerItemState extends State<PlayerItem>
   late bool autoPlayNext;
   late bool backgroundPlayback;
   late bool brightnessVolumeGesture;
+  bool _episodeWatchedReported = false;
+  bool _episodeStateSyncing = false;
+  bool _watchedPopupEnabled = true;
+  bool _watchedAutoRecord = false;
+  double _watchedAutoRecordThreshold = 0.9;
+  // 胶囊弹窗由 _markEpisodeWatched() 在标记成功后自动弹出
 
   Timer? hideTimer;
   Timer? playerTimer;
@@ -317,10 +326,51 @@ class _PlayerItemState extends State<PlayerItem>
         subjectId: videoPageController.bangumiItem.id,
         episodeId: episodeInfo.id,
       );
+      // 标记成功后弹出胶囊确认窗口
+      if (mounted && _watchedPopupEnabled) {
+        showCapsuleWatchedConfirmation(
+          context,
+          episodeNumber: videoPageController.actualEpisodeNumber,
+          infoController: null,
+        );
+      }
+      _maybePromptFinishReview();
     } catch (e) {
       _episodeWatchedReported = false;
       KazumiLogger().w('Bangumi: failed to sync watched episode', error: e);
     }
+  }
+
+  /// 整部最后一集播完后，延迟弹出「评分 + 短评」sheet。
+  /// 与胶囊弹窗串联：先让胶囊飞过去（约 3 秒），再弹评价 sheet。
+  void _maybePromptFinishReview() {
+    if (!mounted) return;
+    final isSyncPlayConnected =
+        playerController.syncplayController?.isConnected ?? false;
+    if (isSyncPlayConnected) return;
+    final currentRoadIndex = videoPageController.currentRoad;
+    if (currentRoadIndex < 0 ||
+        currentRoadIndex >= videoPageController.roadList.length) {
+      return;
+    }
+    final episodes = videoPageController.roadList[currentRoadIndex].data.length;
+    final shouldPrompt = FinishReviewTrigger.I.shouldPromptAfterEpisode(
+      subjectId: videoPageController.bangumiItem.id,
+      currentEpisode: videoPageController.currentEpisode,
+      totalEpisodes: episodes,
+    );
+    if (!shouldPrompt) return;
+    final subjectId = videoPageController.bangumiItem.id;
+    FinishReviewTrigger.I.markPrompted(subjectId);
+    final bangumiItem = videoPageController.bangumiItem;
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      showFinishReviewSheet(
+        context,
+        bangumiItem: bangumiItem,
+        autoTriggered: true,
+      );
+    });
   }
 
   //快捷键按下
@@ -871,8 +921,6 @@ class _PlayerItemState extends State<PlayerItem>
       if (episodeNum != videoPageController.actualEpisodeNumber) {
         episodeNum = videoPageController.actualEpisodeNumber;
         _episodeWatchedReported = false;
-        _showWatchedPopup = false;
-        _watchedPopupDismissed = false;
         unawaited(_syncBangumiProgressStateForCurrentEpisode());
       }
       playerController.playing = playerController.playerPlaying;
@@ -982,21 +1030,7 @@ class _PlayerItemState extends State<PlayerItem>
         if (_watchedAutoRecord) {
           unawaited(_markEpisodeWatched());
         }
-        // 弹窗提示：显示可横向滑走的通知条
-        if (_watchedPopupEnabled) {
-          setState(() {
-            _showWatchedPopup = true;
-            _watchedPopupDismissed = false;
-          });
-          // 5秒后自动消失
-          Future.delayed(const Duration(seconds: 5), () {
-            if (mounted) {
-              setState(() {
-                _watchedPopupDismissed = true;
-              });
-            }
-          });
-        }
+        // 胶囊弹窗由 _markEpisodeWatched() 在标记成功后自动弹出
       }
       // 自动播放下一集
       if (playerController.completed &&
@@ -1889,55 +1923,7 @@ class _PlayerItemState extends State<PlayerItem>
                             disableAnimations: widget.disableAnimations,
                             skipOP: skipOP,
                           ),
-                    // 观看进度提示（类 Toast/通知，可滑动消除）
-                    if (_showWatchedPopup && !_watchedPopupDismissed)
-                      Positioned(
-                        right: 16,
-                        top: 80,
-                        child: Dismissible(
-                          key: const ValueKey('watched_popup'),
-                          direction: DismissDirection.horizontal,
-                          onDismissed: (_) {
-                            _watchedPopupDismissed = true;
-                          },
-                          child: Material(
-                            color: Colors.transparent,
-                            child: Container(
-                              width: 200,
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 10),
-                              decoration: BoxDecoration(
-                                color: Colors.black.withValues(alpha: 0.7),
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.check_circle_outline,
-                                    color: _watchedAutoRecord
-                                        ? const Color(0xFF4FC3F7)
-                                        : Colors.white.withValues(alpha: 0.8),
-                                    size: 16,
-                                  ),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      _watchedAutoRecord
-                                          ? '已自动标记为已看过'
-                                          : '已标记为已看过',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 13,
-                                      ),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
+                    // 胶囊弹窗由 _markEpisodeWatched() 在标记成功后自动弹出
                     // 播放器手势控制
                     Positioned.fill(
                       left: 16,

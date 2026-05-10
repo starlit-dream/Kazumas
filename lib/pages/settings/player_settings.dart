@@ -34,6 +34,7 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
   late bool playerDisableAnimations;
   late bool forceAdBlocker;
   late bool autoPlayNext;
+  late bool watchNow;
   late bool backgroundPlayback;
   late bool brightnessVolumeGesture;
   late int playerButtonSkipTime;
@@ -65,6 +66,7 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
     playerDebugMode =
         setting.get(SettingBoxKey.playerDebugMode, defaultValue: false);
     autoPlayNext = setting.get(SettingBoxKey.autoPlayNext, defaultValue: true);
+    watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
     backgroundPlayback =
         setting.get(SettingBoxKey.backgroundPlayback, defaultValue: false);
     playerDisableAnimations =
@@ -278,6 +280,16 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                   title: Text('自动跳转', style: TextStyle(fontFamily: fontFamily)),
                   description: Text('跳转到上次播放位置', style: TextStyle(fontFamily: fontFamily)),
                   initialValue: playResume,
+                ),
+                SettingsTile.switchTile(
+                  onToggle: (value) async {
+                    watchNow = value ?? !watchNow;
+                    await setting.put(SettingBoxKey.watchNow, watchNow);
+                    setState(() {});
+                  },
+                  title: Text('立即观看', style: TextStyle(fontFamily: fontFamily)),
+                  description: Text('点击观看按钮后自动匹配源并接续播放', style: TextStyle(fontFamily: fontFamily)),
+                  initialValue: watchNow,
                 ),
                 SettingsTile.switchTile(
                   onToggle: (value) async {
