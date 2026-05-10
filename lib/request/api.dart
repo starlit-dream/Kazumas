@@ -1,31 +1,6 @@
 class Api {
   /// 当前版本
-  static const String version = '2.0.9';
-
-  /// 当前构建号
-  static const String buildNumber = '20009';
-
-  /// 分支版本号，优先使用构建时注入的值
-  static const String _branchVersion = String.fromEnvironment('BRANCH_VERSION');
-
-  /// 上游版本号，优先使用构建时注入的值
-  static const String _upstreamVersion =
-      String.fromEnvironment('UPSTREAM_VERSION');
-
-  /// 构建 Commit，优先使用构建时注入的值
-  static const String _buildCommit = String.fromEnvironment('BUILD_COMMIT');
-
-  static String get branchVersion =>
-      _branchVersion.isNotEmpty ? _branchVersion : '$version+$buildNumber';
-
-  static String get upstreamVersion =>
-      _upstreamVersion.isNotEmpty ? _upstreamVersion : version;
-
-  static String get buildCommit =>
-      _buildCommit.isNotEmpty ? _buildCommit : 'dev';
-
-  static String get buildCommitShort =>
-      buildCommit.length > 7 ? buildCommit.substring(0, 7) : buildCommit;
+  static const String version = '2.1.0';
   /// 规则API级别
   static const int apiLevel = 6;
   /// 项目主页

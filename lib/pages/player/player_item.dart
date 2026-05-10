@@ -117,6 +117,7 @@ class _PlayerItemState extends State<PlayerItem>
   late bool haEnable;
   late bool autoPlayNext;
   late bool backgroundPlayback;
+  late bool brightnessVolumeGesture;
   bool _episodeWatchedReported = false;
   bool _episodeStateSyncing = false;
   bool _watchedPopupEnabled = true;
@@ -1672,15 +1673,8 @@ class _PlayerItemState extends State<PlayerItem>
     autoPlayNext = setting.get(SettingBoxKey.autoPlayNext, defaultValue: true);
     backgroundPlayback =
         setting.get(SettingBoxKey.backgroundPlayback, defaultValue: false);
-    _watchedPopupEnabled =
-        setting.get(SettingBoxKey.watchedPopupEnabled, defaultValue: true);
-    _watchedAutoRecord =
-        setting.get(SettingBoxKey.watchedAutoRecord, defaultValue: false);
-    _watchedAutoRecordThreshold =
-        setting.get(SettingBoxKey.watchedAutoRecordThreshold, defaultValue: 0.9);
-    episodeNum = videoPageController.actualEpisodeNumber;
-    _episodeWatchedReported = false;
-    unawaited(_syncBangumiProgressStateForCurrentEpisode());
+    brightnessVolumeGesture =
+        setting.get(SettingBoxKey.brightnessVolumeGesture, defaultValue: true);
     unawaited(_bindAudioService());
     playerTimer = getPlayerTimer();
     windowManager.addListener(this);
@@ -1979,6 +1973,9 @@ class _PlayerItemState extends State<PlayerItem>
                               },
                               onVerticalDragUpdate:
                                   (DragUpdateDetails details) async {
+                                if (!brightnessVolumeGesture) {
+                                  return;
+                                }
                                 final double totalWidth =
                                     MediaQuery.sizeOf(context).width;
                                 final double totalHeight =
@@ -2011,6 +2008,9 @@ class _PlayerItemState extends State<PlayerItem>
                                 }
                               },
                               onVerticalDragEnd: (_) {
+                                if (!brightnessVolumeGesture) {
+                                  return;
+                                }
                                 if (playerController.volumeSeeking) {
                                   playerController.volumeSeeking = false;
                                   Future.delayed(const Duration(seconds: 1),
