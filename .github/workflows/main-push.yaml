@@ -72,15 +72,39 @@ jobs:
       - name: Build Flutter for Android
         run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
-      - name: Sign APKs
-        uses: filippoLeporati93/android-release-signer@v1
-        with:
-          releaseDirectory: build/app/outputs/flutter-apk
-          signingKeyBase64: ${{ secrets.SIGNING_KEY_BASE64 }}
-          alias: ${{ secrets.KEY_ALIAS }}
-          keyStorePassword: ${{ secrets.KEY_STORE_PASSWORD }}
+      - name: Sign APKs (jarsigner fallback for ZIP resilience)
         env:
+          ANDROID_HOME: /usr/local/lib/android/sdk
           BUILD_TOOLS_VERSION: "34.0.0"
+        run: |
+          # Decode keystore
+          echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /tmp/keystore.jks
+          cd build/app/outputs/flutter-apk
+
+          for apk in *.apk; do
+            echo "=== Signing: $apk ==="
+
+            # jarsigner handles ZIP structural issues better than apksigner
+            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
+              -keystore /tmp/keystore.jks \
+              -storepass "${{ secrets.KEY_STORE_PASSWORD }}" \
+              "$apk" "${{ secrets.KEY_ALIAS }}"
+
+            # Align (apksigner does this automatically, jarsigner doesn't)
+            "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/zipalign" -f -p 4 \
+              "$apk" "${apk%.apk}-signed.apk"
+
+            # Verify
+            "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify \
+              "${apk%.apk}-signed.apk"
+          done
+
+          # Clean up files jarsigner left (the unsigned originals)
+          for apk in *.apk; do
+            if [[ "$apk" != *-signed.apk ]]; then
+              rm -f "$apk"
+            fi
+          done
       - name: Package android build output
         run: |
           ls build/app/outputs/flutter-apk/
@@ -244,7 +268,6 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          # 添加了 libsecret-1-dev 和 libjson-cpp-dev
           sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev unzip webkit2gtk-4.1 libasound2-dev libsecret-1-dev libjsoncpp-dev
           sudo apt-get install -y gcc g++ autoconf automake debhelper glslang-dev ladspa-sdk xutils-dev \
               libarchive-dev libbluray-dev libbs2b-dev libcaca-dev libcdio-paranoia-dev libdrm-dev \
