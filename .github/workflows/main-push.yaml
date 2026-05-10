@@ -72,38 +72,48 @@ jobs:
       - name: Build Flutter for Android
         run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
-      - name: Sign APKs (jarsigner fallback for ZIP resilience)
+      - name: Sign APKs (apksigner with ZIP repair fallback)
         env:
           ANDROID_HOME: /usr/local/lib/android/sdk
           BUILD_TOOLS_VERSION: "34.0.0"
         run: |
-          # Decode keystore
           echo "${{ secrets.SIGNING_KEY_BASE64 }}" | base64 -d > /tmp/keystore.jks
           cd build/app/outputs/flutter-apk
+
+          APKSIGNER="${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner"
 
           for apk in *.apk; do
             echo "=== Signing: $apk ==="
 
-            # jarsigner handles ZIP structural issues better than apksigner
-            jarsigner -verbose -sigalg SHA256withRSA -digestalg SHA-256 \
-              -keystore /tmp/keystore.jks \
-              -storepass "${{ secrets.KEY_STORE_PASSWORD }}" \
-              "$apk" "${{ secrets.KEY_ALIAS }}"
+            # Check if APK ZIP structure is valid
+            if ! unzip -t "$apk" &>/dev/null; then
+              echo "⚠️  ZIP corrupted, repairing..."
+              # Fix: unzip and rezip to regenerate central directory
+              mkdir -p /tmp/apk_repair
+              cd /tmp/apk_repair
+              unzip -o "$OLDPWD/$apk" 2>/dev/null
+              rm -f "$OLDPWD/$apk"
+              zip -r -D "$OLDPWD/$apk" .
+              cd "$OLDPWD"
+              rm -rf /tmp/apk_repair
+              echo "✅ ZIP repaired"
+            fi
 
-            # Align (apksigner does this automatically, jarsigner doesn't)
-            "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/zipalign" -f -p 4 \
-              "$apk" "${apk%.apk}-signed.apk"
+            # Sign with apksigner (v1+v2+v3, proper for SDK 36)
+            "$APKSIGNER" sign \
+              --ks /tmp/keystore.jks \
+              --ks-key-alias "${{ secrets.KEY_ALIAS }}" \
+              --ks-pass "pass:${{ secrets.KEY_STORE_PASSWORD }}" \
+              --v1-signing-enabled true \
+              --v2-signing-enabled true \
+              --v3-signing-enabled true \
+              --out "${apk%.apk}-signed.apk" \
+              "$apk"
 
             # Verify
-            "${ANDROID_HOME}/build-tools/${BUILD_TOOLS_VERSION}/apksigner" verify \
+            "$APKSIGNER" verify \
+              --verbose \
               "${apk%.apk}-signed.apk"
-          done
-
-          # Clean up files jarsigner left (the unsigned originals)
-          for apk in *.apk; do
-            if [[ "$apk" != *-signed.apk ]]; then
-              rm -f "$apk"
-            fi
           done
       - name: Package android build output
         run: |
