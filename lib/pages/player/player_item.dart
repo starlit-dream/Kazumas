@@ -19,6 +19,8 @@ import 'package:window_manager/window_manager.dart';
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/bean/widget/capsule_progress_popup.dart';
+import 'package:kazumi/bean/widget/finish_review_sheet.dart';
+import 'package:kazumi/utils/finish_review_trigger.dart';
 import 'package:screen_brightness_platform_interface/screen_brightness_platform_interface.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:kazumi/pages/history/history_controller.dart';
@@ -331,10 +333,43 @@ class _PlayerItemState extends State<PlayerItem>
           infoController: null,
         );
       }
+      _maybePromptFinishReview();
     } catch (e) {
       _episodeWatchedReported = false;
       KazumiLogger().w('Bangumi: failed to sync watched episode', error: e);
     }
+  }
+
+  /// 整部最后一集播完后，延迟弹出「评分 + 短评」sheet。
+  /// 与胶囊弹窗串联：先让胶囊飞过去（约 3 秒），再弹评价 sheet。
+  void _maybePromptFinishReview() {
+    if (!mounted) return;
+    final isSyncPlayConnected =
+        playerController.syncplayController?.isConnected ?? false;
+    if (isSyncPlayConnected) return;
+    final currentRoadIndex = videoPageController.currentRoad;
+    if (currentRoadIndex < 0 ||
+        currentRoadIndex >= videoPageController.roadList.length) {
+      return;
+    }
+    final episodes = videoPageController.roadList[currentRoadIndex].data.length;
+    final shouldPrompt = FinishReviewTrigger.I.shouldPromptAfterEpisode(
+      subjectId: videoPageController.bangumiItem.id,
+      currentEpisode: videoPageController.currentEpisode,
+      totalEpisodes: episodes,
+    );
+    if (!shouldPrompt) return;
+    final subjectId = videoPageController.bangumiItem.id;
+    FinishReviewTrigger.I.markPrompted(subjectId);
+    final bangumiItem = videoPageController.bangumiItem;
+    Future.delayed(const Duration(seconds: 3), () {
+      if (!mounted) return;
+      showFinishReviewSheet(
+        context,
+        bangumiItem: bangumiItem,
+        autoTriggered: true,
+      );
+    });
   }
 
   //快捷键按下

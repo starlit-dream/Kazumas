@@ -6,16 +6,27 @@ on:
       - main
     paths-ignore:
       - 'static/**'
+      - 'plans/**'
       - '**.md'
       - '.gitignore'
       - '.github/ISSUE_TEMPLATE/**'
       - 'fastlane/**'
+      - '.vscode/**'
+      - '.idea/**'
+      - '.kilo/**'
+      - '.sisyphus/**'
+      - 'kazumi.iml'
+      - 'devtools_options.yaml'
   workflow_dispatch:
     inputs:
       logLevel:
         description: 'Log level'
         required: true
         default: 'warning'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   flutter-build-android:
@@ -40,6 +51,7 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - name: Get Flutter dependencies
         run: flutter pub get
         shell: bash
@@ -47,11 +59,16 @@ jobs:
         run: flutter doctor -v
         shell: bash
       - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
         run: |
-          sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-          sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-          sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-          sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+          sed -i "s|kvpx7qkqjh|${DANDANAPI_APPID}|g" lib/utils/mortis.dart
+          sed -i "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
+          sed -i "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
+          sed -i "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build Flutter for Android
         run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
@@ -92,6 +109,7 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - name: Set up Java
         uses: actions/setup-java@v4
         with:
@@ -130,13 +148,19 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - run: flutter pub get
       - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
         run: |
-          sed -i '' "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-          sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-          sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-          sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s|kvpx7qkqjh|${DANDANAPI_APPID}|g" lib/utils/mortis.dart
+          sed -i '' "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
+          sed -i '' "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build IPA
         run: |
           flutter build ios --release --no-codesign \
@@ -167,13 +191,19 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - run: flutter pub get
       - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
         run: |
-          sed -i '' "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-          sed -i '' "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-          sed -i '' "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-          sed -i '' "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s|kvpx7qkqjh|${DANDANAPI_APPID}|g" lib/utils/mortis.dart
+          sed -i '' "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
+          sed -i '' "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
+          sed -i '' "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - run: flutter build macos --release --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
       - name: Create DMG
         continue-on-error: true
@@ -235,15 +265,21 @@ jobs:
         with:
           channel: stable
           flutter-version-file: pubspec.yaml
+          cache: true
       - name: Get Flutter dependencies
         run: flutter pub get
         shell: bash
       - name: Inject DanDan API Credentials
+        env:
+          DANDANAPI_APPID: ${{ secrets.DANDANAPI_APPID }}
+          DANDANAPI_KEY: ${{ secrets.DANDANAPI_KEY }}
+          BANGUMI_APP_ID: ${{ secrets.BANGUMI_APP_ID }}
+          BANGUMI_APP_SECRET: ${{ secrets.BANGUMI_APP_SECRET }}
         run: |
-          sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
-          sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
-          sed -i "s/bangumi_app_id_placeholder/${{ secrets.BANGUMI_APP_ID }}/g" lib/utils/bangumi_oauth.dart
-          sed -i "s/bangumi_app_secret_placeholder/${{ secrets.BANGUMI_APP_SECRET }}/g" lib/utils/bangumi_oauth.dart
+          sed -i "s|kvpx7qkqjh|${DANDANAPI_APPID}|g" lib/utils/mortis.dart
+          sed -i "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
+          sed -i "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
+          sed -i "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build Flutter for Linux
         run: flutter build linux --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash

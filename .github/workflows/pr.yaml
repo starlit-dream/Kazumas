@@ -10,10 +10,17 @@
           - ready_for_review
         paths-ignore:
           - 'static/**'
+          - 'plans/**'
           - '**.md'
           - '.gitignore'
           - '.github/ISSUE_TEMPLATE/**'
           - 'fastlane/**'
+          - '.vscode/**'
+          - '.idea/**'
+          - '.kilo/**'
+          - '.sisyphus/**'
+          - 'kazumi.iml'
+          - 'devtools_options.yaml'
       workflow_dispatch:
         inputs:
           logLevel:
@@ -50,7 +57,11 @@
             required: false
             default: false
             type: boolean
-    
+
+    concurrency:
+      group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+      cancel-in-progress: true
+
     jobs:
       changes:
         if: ${{ ! github.event.pull_request.draft }}
@@ -113,6 +124,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - name: Get Flutter dependencies
             run: flutter pub get
             shell: bash
@@ -150,6 +162,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - name: Set up Java
             uses: actions/setup-java@v4
             with:
@@ -213,6 +226,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - run: flutter pub get
           - name: Build IPA
             run: |
@@ -247,6 +261,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - run: flutter pub get
           - run: flutter build macos --release --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
           - name: Create DMG
@@ -309,6 +324,7 @@
             with:
               channel: stable
               flutter-version-file: pubspec.yaml
+              cache: true
           - name: Get Flutter dependencies
             run: flutter pub get
             shell: bash

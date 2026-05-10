@@ -7,6 +7,7 @@ import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
 import 'package:kazumi/bean/widget/embedded_native_control_area.dart';
 import 'package:kazumi/bean/widget/progress_editor.dart';
+import 'package:kazumi/bean/widget/finish_review_sheet.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:kazumi/utils/constants.dart';
@@ -214,6 +215,18 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     sourceTabController.dispose();
     infoTabController.dispose();
     super.dispose();
+  }
+
+  Future<void> _openFinishReviewSheet() async {
+    final submitted = await showFinishReviewSheet(
+      context,
+      bangumiItem: infoController.bangumiItem,
+      autoTriggered: false,
+    );
+    if (submitted) {
+      await infoController.refreshUserReview();
+      if (mounted) setState(() {});
+    }
   }
 
   void _showProgressEditor() {
@@ -627,6 +640,162 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                                             .surfaceContainerHighest,
                                                                   ),
                                                                 ),
+                                                              ],
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          Icon(
+                                                            Icons
+                                                                .chevron_right,
+                                                            size: 18,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .onSurfaceVariant,
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    ),
+                                                  ),
+                                                ),
+                                              ),
+                                            );
+                                          }),
+                                        // 我的评价（仅登录态显示）
+                                        if (BangumiAuth.isLoggedIn &&
+                                            !infoController.isLoading)
+                                          Observer(builder: (context) {
+                                            final hasRating =
+                                                (infoController.userRating ?? 0) >
+                                                    0;
+                                            final hasComment = infoController
+                                                .userComment.isNotEmpty;
+                                            final hasAny =
+                                                hasRating || hasComment;
+                                            return Padding(
+                                              padding:
+                                                  const EdgeInsets.only(top: 8),
+                                              child: SizedBox(
+                                                width: MediaQuery.of(context)
+                                                            .size
+                                                            .width >
+                                                        950
+                                                    ? 950
+                                                    : MediaQuery.of(context)
+                                                            .size
+                                                            .width -
+                                                        32,
+                                                child: GestureDetector(
+                                                  onTap: _openFinishReviewSheet,
+                                                  child: Card(
+                                                    elevation: 0,
+                                                    color: Theme.of(context)
+                                                        .colorScheme
+                                                        .surfaceContainerHighest
+                                                        .withValues(
+                                                            alpha: 0.6),
+                                                    child: Padding(
+                                                      padding:
+                                                          const EdgeInsets
+                                                              .symmetric(
+                                                              horizontal: 16,
+                                                              vertical: 10),
+                                                      child: Row(
+                                                        children: [
+                                                          Icon(
+                                                            hasAny
+                                                                ? Icons
+                                                                    .rate_review_rounded
+                                                                : Icons
+                                                                    .edit_note_rounded,
+                                                            size: 20,
+                                                            color: Theme.of(
+                                                                    context)
+                                                                .colorScheme
+                                                                .primary,
+                                                          ),
+                                                          const SizedBox(
+                                                              width: 8),
+                                                          Expanded(
+                                                            child: Column(
+                                                              crossAxisAlignment:
+                                                                  CrossAxisAlignment
+                                                                      .start,
+                                                              mainAxisSize:
+                                                                  MainAxisSize
+                                                                      .min,
+                                                              children: [
+                                                                Row(
+                                                                  mainAxisAlignment:
+                                                                      MainAxisAlignment
+                                                                          .spaceBetween,
+                                                                  children: [
+                                                                    Text(
+                                                                      hasAny
+                                                                          ? '我的评价'
+                                                                          : '写短评',
+                                                                      style: TextStyle(
+                                                                        fontSize:
+                                                                            13,
+                                                                        color: Theme.of(
+                                                                                context)
+                                                                            .colorScheme
+                                                                            .onSurfaceVariant,
+                                                                      ),
+                                                                    ),
+                                                                    if (hasRating)
+                                                                      Text(
+                                                                        '${infoController.userRating} / 10',
+                                                                        style:
+                                                                            TextStyle(
+                                                                          fontSize:
+                                                                              12,
+                                                                          fontWeight:
+                                                                              FontWeight.w600,
+                                                                          color: Theme.of(context)
+                                                                              .colorScheme
+                                                                              .primary,
+                                                                        ),
+                                                                      ),
+                                                                  ],
+                                                                ),
+                                                                if (hasComment) ...[
+                                                                  const SizedBox(
+                                                                      height: 4),
+                                                                  Text(
+                                                                    infoController
+                                                                        .userComment,
+                                                                    maxLines: 2,
+                                                                    overflow:
+                                                                        TextOverflow
+                                                                            .ellipsis,
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          12,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurface,
+                                                                    ),
+                                                                  ),
+                                                                ] else if (!hasRating) ...[
+                                                                  const SizedBox(
+                                                                      height: 4),
+                                                                  Text(
+                                                                    '点击给这部番剧评分或留下短评',
+                                                                    style:
+                                                                        TextStyle(
+                                                                      fontSize:
+                                                                          12,
+                                                                      color: Theme.of(
+                                                                              context)
+                                                                          .colorScheme
+                                                                          .onSurfaceVariant,
+                                                                    ),
+                                                                  ),
+                                                                ],
                                                               ],
                                                             ),
                                                           ),

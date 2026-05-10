@@ -476,5 +476,7 @@ class SettingBoxKey {
       watchedPopupEnabled = 'watchedPopupEnabled',
       watchedAutoRecord = 'watchedAutoRecord',
       watchedAutoRecordThreshold = 'watchedAutoRecordThreshold',
-      watchNow = 'watchNow';
+      watchNow = 'watchNow',
+      finishReviewPopupEnabled = 'finishReviewPopupEnabled',
+      finishReviewSkippedSubjects = 'finishReviewSkippedSubjects';
 }

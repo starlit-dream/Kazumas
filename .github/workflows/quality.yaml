@@ -1,0 +1,73 @@
+name: "Code Quality"
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - 'static/**'
+      - 'plans/**'
+      - '**.md'
+      - '.gitignore'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'fastlane/**'
+      - '.vscode/**'
+      - '.idea/**'
+      - '.kilo/**'
+      - '.sisyphus/**'
+      - 'kazumi.iml'
+      - 'devtools_options.yaml'
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+    paths-ignore:
+      - 'static/**'
+      - 'plans/**'
+      - '**.md'
+      - '.gitignore'
+      - '.github/ISSUE_TEMPLATE/**'
+      - 'fastlane/**'
+      - '.vscode/**'
+      - '.idea/**'
+      - '.kilo/**'
+      - '.sisyphus/**'
+      - 'kazumi.iml'
+      - 'devtools_options.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze-and-test:
+    name: "Analyze & Test"
+    if: ${{ github.event_name != 'pull_request' || ! github.event.pull_request.draft }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clone repository
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2.16.0
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: Get Flutter dependencies
+        run: flutter pub get
+
+      # 仅做 check，不写回；任何未格式化文件会让 job 失败
+      - name: Verify formatting
+        run: dart format --output=none --set-exit-if-changed .
+
+      # 不阻塞构建相关警告，仅在严重 issue 时失败
+      - name: Static analysis
+        run: flutter analyze --no-pub
+
+      - name: Run tests
+        run: flutter test --no-pub

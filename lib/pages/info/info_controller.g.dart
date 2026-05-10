@@ -171,6 +171,38 @@ mixin _$InfoController on _InfoController, Store {
     });
   }
 
+  late final _$userCommentAtom =
+      Atom(name: '_InfoController.userComment', context: context);
+
+  @override
+  String get userComment {
+    _$userCommentAtom.reportRead();
+    return super.userComment;
+  }
+
+  @override
+  set userComment(String value) {
+    _$userCommentAtom.reportWrite(value, super.userComment, () {
+      super.userComment = value;
+    });
+  }
+
+  late final _$userCommentPrivateAtom =
+      Atom(name: '_InfoController.userCommentPrivate', context: context);
+
+  @override
+  bool get userCommentPrivate {
+    _$userCommentPrivateAtom.reportRead();
+    return super.userCommentPrivate;
+  }
+
+  @override
+  set userCommentPrivate(bool value) {
+    _$userCommentPrivateAtom.reportWrite(value, super.userCommentPrivate, () {
+      super.userCommentPrivate = value;
+    });
+  }
+
   late final _$episodeProgressLoadingAtom =
       Atom(name: '_InfoController.episodeProgressLoading', context: context);
 
@@ -268,6 +300,8 @@ relatedSubjectList: ${relatedSubjectList},
 relatedSubjectsLoading: ${relatedSubjectsLoading},
 syncedCollectType: ${syncedCollectType},
 userRating: ${userRating},
+userComment: ${userComment},
+userCommentPrivate: ${userCommentPrivate},
 episodeProgressLoading: ${episodeProgressLoading},
 episodeProgressTotal: ${episodeProgressTotal},
 episodeProgressWatched: ${episodeProgressWatched},

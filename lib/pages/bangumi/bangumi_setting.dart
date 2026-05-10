@@ -4,6 +4,7 @@ import 'package:kazumi/bean/appbar/sys_app_bar.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/modules/bangumi/sync_priority.dart';
 import 'package:kazumi/utils/bangumi_sync_service.dart';
+import 'package:kazumi/utils/finish_review_trigger.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -25,6 +26,7 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
   late bool watchedPopupEnabled;
   late bool watchedAutoRecord;
   late double watchedAutoRecordThreshold;
+  late bool finishReviewPopupEnabled;
   bool syncCollectiblesing = false;
   final MenuController syncPriorityMenuController = MenuController();
 
@@ -45,6 +47,8 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
         setting.get(SettingBoxKey.watchedAutoRecord, defaultValue: false);
     watchedAutoRecordThreshold =
         setting.get(SettingBoxKey.watchedAutoRecordThreshold, defaultValue: 0.9);
+    finishReviewPopupEnabled = setting
+        .get(SettingBoxKey.finishReviewPopupEnabled, defaultValue: true);
   }
 
   @override
@@ -334,6 +338,59 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                         title: Text('自动记录进度阈值',
                             style: TextStyle(fontFamily: fontFamily)),
                         description: Text('播放进度达到 ${(watchedAutoRecordThreshold * 100).round()}% 时自动标记为已看过', style: TextStyle(fontFamily: fontFamily)),
+                      ),
+                      SettingsTile.switchTile(
+                        onToggle: (value) async {
+                          finishReviewPopupEnabled =
+                              value ?? !finishReviewPopupEnabled;
+                          await setting.put(
+                            SettingBoxKey.finishReviewPopupEnabled,
+                            finishReviewPopupEnabled,
+                          );
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        },
+                        title: Text('看完弹评分短评',
+                            style: TextStyle(fontFamily: fontFamily)),
+                        description: Text('整部番剧最后一集播完后，弹出评分与短评窗口直接同步到 Bangumi',
+                            style: TextStyle(fontFamily: fontFamily)),
+                        initialValue: finishReviewPopupEnabled,
+                      ),
+                      SettingsTile.navigation(
+                        leading: const Icon(Icons.refresh_rounded),
+                        onPressed: (_) async {
+                          final confirmed = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              title: const Text('重置忽略列表'),
+                              content: const Text(
+                                  '将清空「不再提示这部」的番剧记录，下次看完最后一集时会重新弹出评分窗口。确定吗？'),
+                              actions: [
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(ctx).pop(false),
+                                  child: const Text('取消'),
+                                ),
+                                TextButton(
+                                  onPressed: () =>
+                                      Navigator.of(ctx).pop(true),
+                                  child: const Text('确认'),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (confirmed == true) {
+                            await FinishReviewTrigger.I.resetDismissed();
+                            if (mounted) {
+                              KazumiDialog.showToast(message: '已清空忽略列表');
+                            }
+                          }
+                        },
+                        title: Text('重置评价提示忽略列表',
+                            style: TextStyle(fontFamily: fontFamily)),
+                        description: Text('清空被「不再提示这部」标记过的番剧',
+                            style: TextStyle(fontFamily: fontFamily)),
                       ),
                       SettingsTile(
                         trailing: syncCollectiblesing
