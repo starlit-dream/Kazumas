@@ -91,7 +91,8 @@ class _SourceSheetState extends State<SourceSheet>
     _captchaProvider?.dispose();
     _captchaProvider = CaptchaProvider();
 
-    final searchUrl = plugin.searchURL.replaceAll('@keyword', Uri.encodeQueryComponent(keyword));
+    final searchUrl = plugin.searchURL
+        .replaceAll('@keyword', Uri.encodeQueryComponent(keyword));
 
     _captchaProvider!.loadForCaptcha(
       searchUrl,
@@ -284,7 +285,8 @@ class _SourceSheetState extends State<SourceSheet>
     _captchaProvider?.dispose();
     _captchaProvider = CaptchaProvider();
 
-    final searchUrl = plugin.searchURL.replaceAll('@keyword', Uri.encodeQueryComponent(keyword));
+    final searchUrl = plugin.searchURL
+        .replaceAll('@keyword', Uri.encodeQueryComponent(keyword));
 
     void onVerified() {
       if (autoVerified) return;
@@ -368,8 +370,7 @@ class _SourceSheetState extends State<SourceSheet>
   }
 
   Widget buildPluginView(Plugin plugin, List<Widget> cardList) {
-    final status =
-        widget.infoController.pluginSearchStatus[plugin.name];
+    final status = widget.infoController.pluginSearchStatus[plugin.name];
     if (status == 'pending') {
       return const Center(child: CircularProgressIndicator());
     }
@@ -672,7 +673,8 @@ class _SourceSheetState extends State<SourceSheet>
                     launchUrl(
                       Uri.parse(pluginsController
                           .pluginList[currentIndex].searchURL
-                          .replaceFirst('@keyword', Uri.encodeQueryComponent(keyword))),
+                          .replaceFirst(
+                              '@keyword', Uri.encodeQueryComponent(keyword))),
                       mode: LaunchMode.externalApplication,
                     );
                   },

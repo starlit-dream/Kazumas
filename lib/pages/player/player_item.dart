@@ -306,7 +306,8 @@ class _PlayerItemState extends State<PlayerItem>
         _episodeWatchedReported = true;
       }
     } catch (e) {
-      KazumiLogger().w('Bangumi: failed to sync episode progress state', error: e);
+      KazumiLogger()
+          .w('Bangumi: failed to sync episode progress state', error: e);
     } finally {
       _episodeStateSyncing = false;
     }
@@ -596,8 +597,7 @@ class _PlayerItemState extends State<PlayerItem>
       );
       _syncAudioServiceState();
     } catch (e) {
-      KazumiLogger()
-          .w('AudioController: failed to bind callbacks', error: e);
+      KazumiLogger().w('AudioController: failed to bind callbacks', error: e);
     }
   }
 
@@ -1757,7 +1757,8 @@ class _PlayerItemState extends State<PlayerItem>
                   }
                 },
                 child: SizedBox(
-                  height: videoPageController.isFullscreen || videoPageController.isPip
+                  height: videoPageController.isFullscreen ||
+                          videoPageController.isPip
                       ? (MediaQuery.of(context).size.height)
                       : (MediaQuery.of(context).size.width * 9.0 / (16.0)),
                   width: MediaQuery.of(context).size.width,
@@ -1835,7 +1836,8 @@ class _PlayerItemState extends State<PlayerItem>
                       top: 0,
                       left: 0,
                       right: 0,
-                      height: videoPageController.isFullscreen || videoPageController.isPip
+                      height: videoPageController.isFullscreen ||
+                              videoPageController.isPip
                           ? MediaQuery.sizeOf(context).height
                           : (MediaQuery.sizeOf(context).width * 9 / 16),
                       child: DanmakuScreen(

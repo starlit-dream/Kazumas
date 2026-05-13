@@ -63,9 +63,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
 
   bool _needsBangumiInfoRefresh(BangumiItem bangumiItem) {
     final votesCount = bangumiItem.votesCount;
-    final missingVoteDistribution = votesCount.isEmpty ||
-        bangumiItem.votes <= 0 ||
-        votesCount.length < 10;
+    final missingVoteDistribution =
+        votesCount.isEmpty || bangumiItem.votes <= 0 || votesCount.length < 10;
     return bangumiItem.summary == '' || missingVoteDistribution;
   }
 
@@ -106,7 +105,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
       staffIsEmpty = false;
     });
     try {
-      await infoController.queryBangumiStaffsByID(infoController.bangumiItem.id);
+      await infoController
+          .queryBangumiStaffsByID(infoController.bangumiItem.id);
       if (mounted) {
         setState(() {
           staffIsLoading = false;
@@ -184,7 +184,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     sourceTabController =
         TabController(length: pluginsController.pluginList.length, vsync: this);
     infoTabController = TabController(length: 5, vsync: this);
-    showRating = GStorage.setting.get(SettingBoxKey.showRating, defaultValue: true);
+    showRating =
+        GStorage.setting.get(SettingBoxKey.showRating, defaultValue: true);
     watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
     infoTabController.addListener(() {
       int index = infoTabController.index;
@@ -282,7 +283,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
       showDragHandle: true,
       context: context,
       builder: (context) {
-        return SourceSheet(tabController: sourceTabController, infoController: infoController);
+        return SourceSheet(
+            tabController: sourceTabController, infoController: infoController);
       },
     );
   }
@@ -292,7 +294,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
       await infoController.queryBangumiInfoByID(id, type: type);
       setState(() {});
     } catch (e) {
-      KazumiLogger().e('InfoController: failed to query bangumi info by ID', error: e);
+      KazumiLogger()
+          .e('InfoController: failed to query bangumi info by ID', error: e);
     }
   }
 
@@ -321,8 +324,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
       } on CaptchaRequiredException {
       } on NoResultException {
       } on SearchErrorException {
-      } catch (e) {
-      }
+      } catch (e) {}
     }));
 
     if (results.isEmpty || !mounted) {
@@ -429,7 +431,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                         EmbeddedNativeControlArea(
                           child: CollectButton(
                             bangumiItem: infoController.bangumiItem,
-                            onCollectChanged: infoController.updateCollectionType,
+                            onCollectChanged:
+                                infoController.updateCollectionType,
                             color:
                                 Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
@@ -513,7 +516,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                   ),
                                 ),
                               ),
-                             SafeArea(
+                            SafeArea(
                               bottom: false,
                               child: EmbeddedNativeControlArea(
                                 child: Align(
@@ -521,18 +524,20 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                   child: Padding(
                                     padding: const EdgeInsets.fromLTRB(
                                         16, kToolbarHeight, 16, 0),
-                                     child: Column(
+                                    child: Column(
                                       mainAxisSize: MainAxisSize.min,
                                       children: [
                                         Observer(builder: (context) {
                                           return BangumiInfoCardV(
-                                            bangumiItem: infoController.bangumiItem,
+                                            bangumiItem:
+                                                infoController.bangumiItem,
                                             isLoading: infoController.isLoading,
                                             showRating: showRating,
-                                            userRating: infoController.userRating,
+                                            userRating:
+                                                infoController.userRating,
                                             isLoggedIn: BangumiAuth.isLoggedIn,
-                                            onCollectChanged:
-                                                infoController.updateCollectionType,
+                                            onCollectChanged: infoController
+                                                .updateCollectionType,
                                             onRatingChanged:
                                                 infoController.updateUserRating,
                                           );
@@ -542,8 +547,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                             !infoController.isLoading)
                                           Observer(builder: (context) {
                                             final total = infoController
-                                                    .episodeProgressTotal >
-                                                0
+                                                        .episodeProgressTotal >
+                                                    0
                                                 ? infoController
                                                     .episodeProgressTotal
                                                 : 1;
@@ -571,13 +576,12 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                     color: Theme.of(context)
                                                         .colorScheme
                                                         .surfaceContainerHighest
-                                                        .withValues(
-                                                            alpha: 0.6),
+                                                        .withValues(alpha: 0.6),
                                                     child: Padding(
-                                                      padding:
-                                                          const EdgeInsets.symmetric(
-                                                              horizontal: 16,
-                                                              vertical: 10),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 16,
+                                                          vertical: 10),
                                                       child: Row(
                                                         children: [
                                                           Icon(
@@ -607,24 +611,24 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                                   children: [
                                                                     Text(
                                                                       '观看进度',
-                                                                      style: TextStyle(
+                                                                      style:
+                                                                          TextStyle(
                                                                         fontSize:
                                                                             13,
-                                                                        color: Theme.of(
-                                                                                context)
+                                                                        color: Theme.of(context)
                                                                             .colorScheme
                                                                             .onSurfaceVariant,
                                                                       ),
                                                                     ),
                                                                     Text(
                                                                       '$watched / $total',
-                                                                      style: TextStyle(
+                                                                      style:
+                                                                          TextStyle(
                                                                         fontSize:
                                                                             12,
                                                                         fontWeight:
                                                                             FontWeight.w600,
-                                                                        color: Theme.of(
-                                                                                context)
+                                                                        color: Theme.of(context)
                                                                             .colorScheme
                                                                             .primary,
                                                                       ),
@@ -638,13 +642,16 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                                       BorderRadius
                                                                           .circular(
                                                                               3),
-                                                                  child: LinearProgressIndicator(
-                                                                    value: progress,
-                                                                    minHeight: 4,
-                                                                    backgroundColor:
-                                                                        Theme.of(context)
-                                                                            .colorScheme
-                                                                            .surfaceContainerHighest,
+                                                                  child:
+                                                                      LinearProgressIndicator(
+                                                                    value:
+                                                                        progress,
+                                                                    minHeight:
+                                                                        4,
+                                                                    backgroundColor: Theme.of(
+                                                                            context)
+                                                                        .colorScheme
+                                                                        .surfaceContainerHighest,
                                                                   ),
                                                                 ),
                                                               ],
@@ -653,8 +660,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                           const SizedBox(
                                                               width: 8),
                                                           Icon(
-                                                            Icons
-                                                                .chevron_right,
+                                                            Icons.chevron_right,
                                                             size: 18,
                                                             color: Theme.of(
                                                                     context)
@@ -674,7 +680,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                             !infoController.isLoading)
                                           Observer(builder: (context) {
                                             final hasRating =
-                                                (infoController.userRating ?? 0) >
+                                                (infoController.userRating ??
+                                                        0) >
                                                     0;
                                             final hasComment = infoController
                                                 .userComment.isNotEmpty;
@@ -700,14 +707,12 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                     color: Theme.of(context)
                                                         .colorScheme
                                                         .surfaceContainerHighest
-                                                        .withValues(
-                                                            alpha: 0.6),
+                                                        .withValues(alpha: 0.6),
                                                     child: Padding(
-                                                      padding:
-                                                          const EdgeInsets
-                                                              .symmetric(
-                                                              horizontal: 16,
-                                                              vertical: 10),
+                                                      padding: const EdgeInsets
+                                                          .symmetric(
+                                                          horizontal: 16,
+                                                          vertical: 10),
                                                       child: Row(
                                                         children: [
                                                           Icon(
@@ -742,11 +747,11 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                                       hasAny
                                                                           ? '我的评价'
                                                                           : '写短评',
-                                                                      style: TextStyle(
+                                                                      style:
+                                                                          TextStyle(
                                                                         fontSize:
                                                                             13,
-                                                                        color: Theme.of(
-                                                                                context)
+                                                                        color: Theme.of(context)
                                                                             .colorScheme
                                                                             .onSurfaceVariant,
                                                                       ),
@@ -769,7 +774,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                                 ),
                                                                 if (hasComment) ...[
                                                                   const SizedBox(
-                                                                      height: 4),
+                                                                      height:
+                                                                          4),
                                                                   Text(
                                                                     infoController
                                                                         .userComment,
@@ -789,7 +795,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                                   ),
                                                                 ] else if (!hasRating) ...[
                                                                   const SizedBox(
-                                                                      height: 4),
+                                                                      height:
+                                                                          4),
                                                                   Text(
                                                                     '点击给这部番剧评分或留下短评',
                                                                     style:
@@ -809,8 +816,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                           const SizedBox(
                                                               width: 8),
                                                           Icon(
-                                                            Icons
-                                                                .chevron_right,
+                                                            Icons.chevron_right,
                                                             size: 18,
                                                             color: Theme.of(
                                                                     context)
