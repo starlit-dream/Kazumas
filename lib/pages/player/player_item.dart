@@ -27,7 +27,7 @@ import 'package:kazumi/pages/history/history_controller.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/utils/storage.dart';
-import 'package:kazumi/request/damaku.dart';
+import 'package:kazumi/request/apis/danmaku_api.dart';
 import 'package:kazumi/modules/danmaku/danmaku_search_response.dart';
 import 'package:kazumi/modules/danmaku/danmaku_episode_response.dart';
 import 'package:kazumi/pages/player/player_item_surface.dart';
@@ -577,12 +577,14 @@ class _PlayerItemState extends State<PlayerItem>
     unawaited(_updateAndroidPIPActions(force: true));
   }
 
-  Future<void> _uploadHistoryToWebDav() async {
+  Future<void> _syncHistoryWithWebDav() async {
     if (webDavEnable && webDavEnableHistory) {
       try {
         var webDav = WebDav();
-        await webDav.updateHistory();
-      } catch (_) {}
+        await webDav.syncHistory();
+      } catch (e) {
+        KazumiLogger().w('WebDav: auto history sync failed', error: e);
+      }
     }
   }
 
@@ -661,7 +663,7 @@ class _PlayerItemState extends State<PlayerItem>
     playerController.lockPanel = false;
     playerController.danmakuController.clear();
 
-    await _uploadHistoryToWebDav();
+    await _syncHistoryWithWebDav();
   }
 
   void handleProgressBarDragStart(ThumbDragDetails details) {
@@ -918,17 +920,7 @@ class _PlayerItemState extends State<PlayerItem>
 
   Timer getPlayerTimer() {
     return Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (episodeNum != videoPageController.actualEpisodeNumber) {
-        episodeNum = videoPageController.actualEpisodeNumber;
-        _episodeWatchedReported = false;
-        unawaited(_syncBangumiProgressStateForCurrentEpisode());
-      }
-      playerController.playing = playerController.playerPlaying;
-      playerController.isBuffering = playerController.playerBuffering;
-      playerController.currentPosition = playerController.playerPosition;
-      playerController.buffer = playerController.playerBuffer;
-      playerController.duration = playerController.playerDuration;
-      playerController.completed = playerController.playerCompleted;
+      playerController.syncPlaybackState();
       unawaited(_updateAndroidPIPActions());
       _syncAudioServiceState();
       // 弹幕相关
@@ -1000,20 +992,18 @@ class _PlayerItemState extends State<PlayerItem>
       if (playerController.playerPlaying &&
           !videoPageController.loading &&
           !videoPageController.isOfflineMode) {
-        if (!WebDav().isHistorySyncing) {
-          final pluginName = videoPageController.isOfflineMode
-              ? videoPageController.offlinePluginName
-              : videoPageController.currentPlugin.name;
-          historyController.updateHistory(
-              videoPageController.actualEpisodeNumber,
-              videoPageController.currentRoad,
-              pluginName,
-              videoPageController.bangumiItem,
-              playerController.playerPosition,
-              videoPageController.src,
-              videoPageController.roadList[videoPageController.currentRoad]
-                  .identifier[videoPageController.currentEpisode - 1]);
-        }
+        final pluginName = videoPageController.isOfflineMode
+            ? videoPageController.offlinePluginName
+            : videoPageController.currentPlugin.name;
+        historyController.updateHistory(
+            videoPageController.actualEpisodeNumber,
+            videoPageController.currentRoad,
+            pluginName,
+            videoPageController.bangumiItem,
+            playerController.playerPosition,
+            videoPageController.src,
+            videoPageController.roadList[videoPageController.currentRoad]
+                .identifier[videoPageController.currentEpisode - 1]);
       }
       final totalSeconds = playerController.duration.inSeconds;
       final watchedSeconds = playerController.currentPosition.inSeconds;
@@ -1060,7 +1050,7 @@ class _PlayerItemState extends State<PlayerItem>
     DanmakuEpisodeResponse danmakuEpisodeResponse;
     try {
       danmakuSearchResponse =
-          await DanmakuRequest.getDanmakuSearchResponse(keyword);
+          await DanmakuApi.getDanmakuSearchResponse(keyword);
     } catch (e) {
       KazumiDialog.dismiss();
       KazumiDialog.showToast(message: '弹幕检索错误: ${e.toString()}');
@@ -1085,7 +1075,7 @@ class _PlayerItemState extends State<PlayerItem>
                   KazumiDialog.showLoading(msg: '弹幕检索中');
                   try {
                     danmakuEpisodeResponse =
-                        await DanmakuRequest.getDanDanEpisodesByDanDanBangumiID(
+                        await DanmakuApi.getDanDanEpisodesByDanDanBangumiID(
                             danmakuInfo.animeId);
                   } catch (e) {
                     KazumiDialog.dismiss();

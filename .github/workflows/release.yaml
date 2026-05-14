@@ -1,5 +1,98 @@
 ---
-name: "release"
+    name: "release"
+    
+    on:
+      push:
+        tags:
+          - "*"
+      workflow_dispatch:
+        inputs:
+          logLevel:
+            description: 'Log level'     
+            required: true
+            default: 'warning'
+    
+    jobs:
+      flutter-test:
+        runs-on: "ubuntu-latest"
+        permissions:
+          contents: read
+        steps:
+          - name: Clone repository
+            uses: actions/checkout@v4
+          - name: Set up Flutter
+            uses: subosito/flutter-action@v2.16.0
+            with:
+              channel: stable
+              flutter-version-file: pubspec.yaml
+          - name: Get Flutter dependencies
+            run: flutter pub get
+            shell: bash
+          - name: Run Flutter tests
+            run: flutter test
+            shell: bash
+
+      flutter-analyze:
+        runs-on: "ubuntu-latest"
+        permissions:
+          contents: read
+        steps:
+          - name: Clone repository
+            uses: actions/checkout@v4
+          - name: Set up Flutter
+            uses: subosito/flutter-action@v2.16.0
+            with:
+              channel: stable
+              flutter-version-file: pubspec.yaml
+          - name: Get Flutter dependencies
+            run: flutter pub get
+            shell: bash
+          - name: Analyze Flutter project
+            run: flutter analyze --no-fatal-infos --fatal-warnings
+            shell: bash
+
+      flutter-build-android:
+        name: "Release for android"
+        needs: [flutter-test, flutter-analyze]
+        runs-on: "ubuntu-latest" 
+        permissions: write-all
+        steps:
+          - name: Clone repository
+            uses: actions/checkout@v4
+          - name: Extract tag name
+            run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+            shell: bash
+          - name: Echo build progress
+            run: echo "Kazumi_android_${{ env.tag }}.apk build progress"
+            shell: bash
+          - name: Install dependencies
+            run: |
+              sudo apt-get update
+              sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev libasound2-dev
+            shell: bash
+          - name: Set up JDK 17
+            uses: actions/setup-java@v4
+            with:
+              java-version: '17'
+              distribution: 'temurin'          
+          - name: Set up Flutter
+            uses: subosito/flutter-action@v2.16.0
+            with:
+              channel: stable
+              flutter-version-file: pubspec.yaml
+          - name: Get Flutter dependencies
+            run: flutter pub get
+            shell: bash
+          - name: Inject DanDan API Credentials
+            run: |
+              sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
+              sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
+          - name: Build Flutter for Android
+            run: flutter build apk --split-per-abi
+            shell: bash
+          - name: Package android build output
+            run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Kazumi_android_${env:tag}.apk
+            shell: bash
 
 on:
   push:
@@ -54,16 +147,66 @@ jobs:
           fi
           echo "branch_version=$BRANCH_VERSION" >> $GITHUB_OUTPUT
 
-          if [ -n "$INPUT_UPSTREAM" ]; then
-            echo "Using manually specified upstream version: $INPUT_UPSTREAM"
-            echo "upstream_version=$INPUT_UPSTREAM" >> $GITHUB_OUTPUT
-          else
-            echo "Fetching latest upstream version from Predidit/Kazumi..."
-            UPSTREAM_TAG=$(gh api repos/Predidit/Kazumi/releases/latest --jq '.tag_name' 2>/dev/null || echo "unknown")
-            echo "Detected upstream version: $UPSTREAM_TAG"
-            echo "upstream_version=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
-          fi
-        shell: bash
+      flutter-build-linux:
+        name: "Release for Linux"
+        needs: [flutter-test, flutter-analyze]
+        runs-on: "ubuntu-latest" 
+        permissions: write-all
+        steps:
+          - name: Clone repository
+            uses: actions/checkout@v4
+          - name: Extract tag name
+            run: echo "tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_ENV
+            shell: bash
+          - name: Echo build progress
+            run: echo "Kazumi_linux_${{ env.tag }}.tar.gz build progress"
+            shell: bash
+          - name: Install dependencies
+            run: |
+              sudo apt-get update
+              sudo apt-get install -y clang cmake libgtk-3-dev ninja-build libayatana-appindicator3-dev unzip webkit2gtk-4.1 libasound2-dev
+              sudo apt-get install -y gcc g++ autoconf automake debhelper glslang-dev ladspa-sdk xutils-dev libasound2-dev \
+                  libarchive-dev libbluray-dev libbs2b-dev libcaca-dev libcdio-paranoia-dev libdrm-dev \
+                  libdav1d-dev libdvdnav-dev libegl1-mesa-dev libepoxy-dev libfontconfig-dev libfreetype6-dev \
+                  libfribidi-dev libgl1-mesa-dev libgbm-dev libgme-dev libgsm1-dev libharfbuzz-dev libjpeg-dev \
+                  libbrotli-dev liblcms2-dev libmodplug-dev libmp3lame-dev libopenal-dev \
+                  libopus-dev libopencore-amrnb-dev libopencore-amrwb-dev libpulse-dev librtmp-dev \
+                  libsdl2-dev libsixel-dev libssh-dev libsoxr-dev libspeex-dev libtool \
+                  libv4l-dev libva-dev libvdpau-dev libvorbis-dev libvo-amrwbenc-dev \
+                  libunwind-dev libvpx-dev libwayland-dev libx11-dev libxext-dev \
+                  libxkbcommon-dev libxrandr-dev libxss-dev libxv-dev libxvidcore-dev \
+                  linux-libc-dev nasm ninja-build pkg-config python3 python3-docutils wayland-protocols \
+                  x11proto-core-dev zlib1g-dev libfdk-aac-dev libtheora-dev libwebp-dev \
+                  unixodbc-dev libpq-dev libxxhash-dev libaom-dev              
+            shell: bash
+          - name: Set up Flutter
+            uses: subosito/flutter-action@v2.16.0
+            with:
+              channel: stable
+              flutter-version-file: pubspec.yaml
+          - name: Get Flutter dependencies
+            run: flutter pub get
+            shell: bash
+          - name: Inject DanDan API Credentials
+            run: |
+              sed -i "s/kvpx7qkqjh/${{ secrets.DANDANAPI_APPID }}/g" lib/utils/mortis.dart
+              sed -i "s/rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax/${{ secrets.DANDANAPI_KEY }}/g" lib/utils/mortis.dart
+          - name: Build Flutter for Linux
+            run: flutter build linux
+            shell: bash
+          # - name: Download FFmpeg Assets
+          #   uses: dsaltares/fetch-gh-release-asset@master
+          #   with:
+          #     repo: 'Predidit/avbuild'
+          #     version: 'tags/1.1.0'
+          #     file: 'ffmpeg_linux_amd64.zip'
+          #     token: ${{ secrets.GITHUB_TOKEN }}
+          # - run: rm -f build/linux/x64/release/bundle/lib/libffmpeg.so.7
+          # - run: unzip ffmpeg_linux_amd64.zip -d build/linux/x64/release/bundle/lib
+          - name: Package linux build output
+            run: |
+              # Tarball package
+              tar -zcvf Kazumi_linux_${{ env.tag }}_amd64.tar.gz -C build/linux/x64/release/bundle .
 
   # ============================================================
   # Android 构建
@@ -218,27 +361,11 @@ jobs:
           name: windows_msix_outputs
           path: build/windows/x64/runner/Release/kazumi.msix
 
-      # Sign MSIX
-      - run: New-Item -Path "build/windows/msix_signed_output" -ItemType Directory
-      - name: Sign Windows MSIX
-        uses: signpath/github-action-submit-signing-request@v1.1
-        continue-on-error: true
-        with:
-          api-token: '${{ secrets.SIGNPATH_API_TOKEN }}'
-          organization-id: 'fa047255-4772-4be1-b14f-5cfa62635877'
-          project-slug: 'Kazumi'
-          signing-policy-slug: 'release-signing'
-          artifact-configuration-slug: 'MSIX'
-          github-artifact-id: '${{ steps.unsigned-windows-msix-artifacts.outputs.artifact-id }}'
-          wait-for-completion: true
-          output-artifact-directory: 'build/windows/msix_signed_output'
-      - name: Upload signed MSIX
-        uses: actions/upload-artifact@v4
-        id: signed-windows-msix-artifacts
-        continue-on-error: true
-        with:
-          name: windows_msix_signed_outputs
-          path: build/windows/msix_signed_output/*.msix
+      flutter-build-ios:
+        name: "Release for iOS"
+        needs: [flutter-test, flutter-analyze]
+        runs-on: "macos-latest"
+        permissions: write-all
 
   # ============================================================
   # Linux 构建
@@ -293,8 +420,11 @@ jobs:
         run: |
           VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
 
-          # Tarball package
-          tar -zcvf "Kazumas_linux_${VERSION}_amd64.tar.gz" -C build/linux/x64/release/bundle .
+      flutter-build-macos:
+        name: "Release for Macos"
+        needs: [flutter-test, flutter-analyze]
+        runs-on: "macos-latest"
+        permissions: write-all
 
           # Debian package
           mkdir "Kazumas_linux_${VERSION}_amd64"

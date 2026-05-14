@@ -37,6 +37,9 @@ class InfoPage extends StatefulWidget {
 }
 
 class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
+  static const Duration _minimumBangumiInfoLoadingDuration =
+      Duration(milliseconds: 600);
+
   /// Don't use modular singleton here. We may have multiple info pages.
   /// Use a new instance of InfoController for each info page.
   final InfoController infoController = InfoController();
@@ -58,8 +61,12 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   bool staffIsLoading = false;
   bool staffQueryTimeout = false;
   bool staffIsEmpty = false;
+  bool _showBangumiInfoSkeleton = false;
 
   final inputBangumiIten = Modular.args.data as BangumiItem;
+
+  bool get _isShowingBangumiInfoSkeleton =>
+      infoController.isLoading || _showBangumiInfoSkeleton;
 
   bool _needsBangumiInfoRefresh(BangumiItem bangumiItem) {
     final votesCount = bangumiItem.votesCount;
@@ -169,7 +176,12 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     // We need the type parameter to determine whether to attach the new data to the old data
     // We can't generally replace the old data with the new data, because the old data contains images url, update them will cause the image to reload and flicker
     if (_needsBangumiInfoRefresh(infoController.bangumiItem)) {
-      queryBangumiInfoByID(infoController.bangumiItem.id, type: 'attach');
+      _showBangumiInfoSkeleton = true;
+      queryBangumiInfoByID(
+        infoController.bangumiItem.id,
+        type: 'attach',
+        enforceMinimumLoadingDuration: true,
+      );
     }
     infoController.syncBangumiCollection().then((_) {
       if (mounted) {
@@ -186,7 +198,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     infoTabController = TabController(length: 5, vsync: this);
     showRating =
         GStorage.setting.get(SettingBoxKey.showRating, defaultValue: true);
-    watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
     infoTabController.addListener(() {
       int index = infoTabController.index;
       if (index == 1 &&
@@ -225,163 +236,35 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     super.dispose();
   }
 
-  Future<void> _openFinishReviewSheet() async {
-    final submitted = await showFinishReviewSheet(
-      context,
-      bangumiItem: infoController.bangumiItem,
-      autoTriggered: false,
-    );
-    if (submitted) {
-      await infoController.refreshUserReview();
-      if (mounted) setState(() {});
-    }
-  }
-
-  void _showProgressEditor() {
-    showModalBottomSheet(
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: (MediaQuery.sizeOf(context).height >=
-                LayoutBreakpoint.compact['height']!)
-            ? MediaQuery.of(context).size.height * 3 / 4
-            : MediaQuery.of(context).size.height,
-        maxWidth: (MediaQuery.sizeOf(context).width >=
-                LayoutBreakpoint.medium['width']!)
-            ? MediaQuery.of(context).size.width * 9 / 16
-            : MediaQuery.of(context).size.width,
-      ),
-      clipBehavior: Clip.antiAlias,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      showDragHandle: true,
-      context: context,
-      builder: (context) {
-        return ProgressEditor(
-          infoController: infoController,
-          episodeList: infoController.bangumiEpisodeList.toList(),
-        );
-      },
-    ).whenComplete(() {
-      if (mounted) setState(() {});
-    });
-  }
-
-  void _showSourceSheet() {
-    showModalBottomSheet(
-      isScrollControlled: true,
-      constraints: BoxConstraints(
-        maxHeight: (MediaQuery.sizeOf(context).height >=
-                LayoutBreakpoint.compact['height']!)
-            ? MediaQuery.of(context).size.height * 3 / 4
-            : MediaQuery.of(context).size.height,
-        maxWidth: (MediaQuery.sizeOf(context).width >=
-                LayoutBreakpoint.medium['width']!)
-            ? MediaQuery.of(context).size.width * 9 / 16
-            : MediaQuery.of(context).size.width,
-      ),
-      clipBehavior: Clip.antiAlias,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      showDragHandle: true,
-      context: context,
-      builder: (context) {
-        return SourceSheet(
-            tabController: sourceTabController, infoController: infoController);
-      },
-    );
-  }
-
-  Future<void> queryBangumiInfoByID(int id, {String type = "init"}) async {
+  Future<void> queryBangumiInfoByID(
+    int id, {
+    String type = "init",
+    bool enforceMinimumLoadingDuration = false,
+  }) async {
+    final loadingStartedAt = DateTime.now();
     try {
       await infoController.queryBangumiInfoByID(id, type: type);
-      setState(() {});
     } catch (e) {
       KazumiLogger()
           .e('InfoController: failed to query bangumi info by ID', error: e);
+    } finally {
+      if (enforceMinimumLoadingDuration && mounted) {
+        await _waitForMinimumBangumiInfoLoadingDuration(loadingStartedAt);
+      }
+      if (mounted) {
+        setState(() {
+          _showBangumiInfoSkeleton = false;
+        });
+      }
     }
   }
 
-  Future<void> _watchNow() async {
-    final historyController = Modular.get<HistoryController>();
-    final pluginList = pluginsController.pluginList.toList();
-    final keyword = infoController.bangumiItem.nameCn.isEmpty
-        ? infoController.bangumiItem.name
-        : infoController.bangumiItem.nameCn;
-
-    KazumiDialog.showLoading(
-      msg: '正在搜索源...',
-      barrierDismissible: true,
-      onDismiss: () {},
-    );
-
-    final results = <PluginSearchResponse>[];
-
-    await Future.wait(pluginList.map((plugin) async {
-      try {
-        final result = await plugin.queryBangumi(keyword, shouldRethrow: true);
-        if (result.data.isNotEmpty) {
-          pluginsController.validityTracker.markSearchValid(plugin.name);
-          results.add(result);
-        }
-      } on CaptchaRequiredException {
-      } on NoResultException {
-      } on SearchErrorException {
-      } catch (e) {}
-    }));
-
-    if (results.isEmpty || !mounted) {
-      KazumiDialog.dismiss();
-      if (!mounted) return;
-      _showSourceSheet();
-      return;
-    }
-
-    PluginSearchResponse? bestResult;
-    final bangumiId = infoController.bangumiItem.id;
-    for (final history in historyController.histories) {
-      if (history.bangumiItem.id == bangumiId) {
-        for (final result in results) {
-          if (result.pluginName == history.adapterName) {
-            bestResult = result;
-            break;
-          }
-        }
-        if (bestResult != null) break;
-      }
-    }
-
-    bestResult ??= results.first;
-
-    if (!mounted) return;
-
-    KazumiDialog.dismiss();
-    KazumiDialog.showLoading(
-      msg: '获取线路中...',
-      barrierDismissible: Utils.isDesktop(),
-      onDismiss: () {
-        videoPageController.cancelQueryRoads();
-      },
-    );
-
-    final selected = bestResult;
-    final plugin = pluginList.firstWhere((p) => p.name == selected.pluginName);
-    final searchItem = selected.data.first;
-
-    videoPageController.bangumiItem = infoController.bangumiItem;
-    videoPageController.currentPlugin = plugin;
-    videoPageController.title = searchItem.name;
-    videoPageController.src = searchItem.src;
-
-    try {
-      await videoPageController.queryRoads(searchItem.src, plugin.name);
-      KazumiDialog.dismiss();
-      if (mounted) {
-        await Modular.to.pushNamed('/video/');
-      }
-    } catch (_) {
-      KazumiLogger().w('WatchNow: failed to query video playlist');
-      KazumiDialog.dismiss();
-      if (mounted) {
-        KazumiDialog.showToast(message: '获取线路失败，请重试');
-      }
+  Future<void> _waitForMinimumBangumiInfoLoadingDuration(
+      DateTime loadingStartedAt) async {
+    final elapsed = DateTime.now().difference(loadingStartedAt);
+    final remaining = _minimumBangumiInfoLoadingDuration - elapsed;
+    if (remaining > Duration.zero) {
+      await Future.delayed(remaining);
     }
   }
 
@@ -472,47 +355,19 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                     flexibleSpace: FlexibleSpaceBar(
                       collapseMode: CollapseMode.pin,
                       background: Observer(builder: (context) {
+                        final showBangumiInfoSkeleton =
+                            _isShowingBangumiInfoSkeleton;
                         return Stack(
                           children: [
                             // No background image when loading to make loading looks better
-                            if (!infoController.isLoading)
+                            if (!showBangumiInfoSkeleton)
                               Positioned.fill(
                                 bottom: kTextTabBarHeight,
                                 child: IgnorePointer(
-                                  child: Opacity(
-                                    opacity: 0.4,
-                                    child: LayoutBuilder(
-                                      builder: (context, boxConstraints) {
-                                        return ImageFiltered(
-                                          imageFilter: ImageFilter.blur(
-                                              sigmaX: 15.0, sigmaY: 15.0),
-                                          child: ShaderMask(
-                                            shaderCallback: (Rect bounds) {
-                                              return const LinearGradient(
-                                                begin: Alignment.topCenter,
-                                                end: Alignment.bottomCenter,
-                                                colors: [
-                                                  Colors.white,
-                                                  Colors.transparent,
-                                                ],
-                                                stops: [0.8, 1],
-                                              ).createShader(bounds);
-                                            },
-                                            child: NetworkImgLayer(
-                                              src: infoController.bangumiItem
-                                                      .images['large'] ??
-                                                  '',
-                                              width: boxConstraints.maxWidth,
-                                              height: boxConstraints.maxHeight,
-                                              fadeInDuration: const Duration(
-                                                  milliseconds: 0),
-                                              fadeOutDuration: const Duration(
-                                                  milliseconds: 0),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
+                                  child: _InfoHeaderBackground(
+                                    imageUrl: infoController
+                                            .bangumiItem.images['large'] ??
+                                        '',
                                   ),
                                 ),
                               ),
@@ -524,314 +379,10 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                   child: Padding(
                                     padding: const EdgeInsets.fromLTRB(
                                         16, kToolbarHeight, 16, 0),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        Observer(builder: (context) {
-                                          return BangumiInfoCardV(
-                                            bangumiItem:
-                                                infoController.bangumiItem,
-                                            isLoading: infoController.isLoading,
-                                            showRating: showRating,
-                                            userRating:
-                                                infoController.userRating,
-                                            isLoggedIn: BangumiAuth.isLoggedIn,
-                                            onCollectChanged: infoController
-                                                .updateCollectionType,
-                                            onRatingChanged:
-                                                infoController.updateUserRating,
-                                          );
-                                        }),
-                                        // 进度条（仅登录态显示）
-                                        if (BangumiAuth.isLoggedIn &&
-                                            !infoController.isLoading)
-                                          Observer(builder: (context) {
-                                            final total = infoController
-                                                        .episodeProgressTotal >
-                                                    0
-                                                ? infoController
-                                                    .episodeProgressTotal
-                                                : 1;
-                                            final watched = infoController
-                                                .episodeProgressWatched;
-                                            final progress = watched / total;
-                                            return Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 8),
-                                              child: SizedBox(
-                                                width: MediaQuery.of(context)
-                                                            .size
-                                                            .width >
-                                                        950
-                                                    ? 950
-                                                    : MediaQuery.of(context)
-                                                            .size
-                                                            .width -
-                                                        32,
-                                                child: GestureDetector(
-                                                  onTap: () =>
-                                                      _showProgressEditor(),
-                                                  child: Card(
-                                                    elevation: 0,
-                                                    color: Theme.of(context)
-                                                        .colorScheme
-                                                        .surfaceContainerHighest
-                                                        .withValues(alpha: 0.6),
-                                                    child: Padding(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 16,
-                                                          vertical: 10),
-                                                      child: Row(
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .play_circle_outline,
-                                                            size: 20,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .primary,
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                            child: Column(
-                                                              crossAxisAlignment:
-                                                                  CrossAxisAlignment
-                                                                      .start,
-                                                              mainAxisSize:
-                                                                  MainAxisSize
-                                                                      .min,
-                                                              children: [
-                                                                Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .spaceBetween,
-                                                                  children: [
-                                                                    Text(
-                                                                      '观看进度',
-                                                                      style:
-                                                                          TextStyle(
-                                                                        fontSize:
-                                                                            13,
-                                                                        color: Theme.of(context)
-                                                                            .colorScheme
-                                                                            .onSurfaceVariant,
-                                                                      ),
-                                                                    ),
-                                                                    Text(
-                                                                      '$watched / $total',
-                                                                      style:
-                                                                          TextStyle(
-                                                                        fontSize:
-                                                                            12,
-                                                                        fontWeight:
-                                                                            FontWeight.w600,
-                                                                        color: Theme.of(context)
-                                                                            .colorScheme
-                                                                            .primary,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                                const SizedBox(
-                                                                    height: 4),
-                                                                ClipRRect(
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              3),
-                                                                  child:
-                                                                      LinearProgressIndicator(
-                                                                    value:
-                                                                        progress,
-                                                                    minHeight:
-                                                                        4,
-                                                                    backgroundColor: Theme.of(
-                                                                            context)
-                                                                        .colorScheme
-                                                                        .surfaceContainerHighest,
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Icon(
-                                                            Icons.chevron_right,
-                                                            size: 18,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }),
-                                        // 我的评价（仅登录态显示）
-                                        if (BangumiAuth.isLoggedIn &&
-                                            !infoController.isLoading)
-                                          Observer(builder: (context) {
-                                            final hasRating =
-                                                (infoController.userRating ??
-                                                        0) >
-                                                    0;
-                                            final hasComment = infoController
-                                                .userComment.isNotEmpty;
-                                            final hasAny =
-                                                hasRating || hasComment;
-                                            return Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 8),
-                                              child: SizedBox(
-                                                width: MediaQuery.of(context)
-                                                            .size
-                                                            .width >
-                                                        950
-                                                    ? 950
-                                                    : MediaQuery.of(context)
-                                                            .size
-                                                            .width -
-                                                        32,
-                                                child: GestureDetector(
-                                                  onTap: _openFinishReviewSheet,
-                                                  child: Card(
-                                                    elevation: 0,
-                                                    color: Theme.of(context)
-                                                        .colorScheme
-                                                        .surfaceContainerHighest
-                                                        .withValues(alpha: 0.6),
-                                                    child: Padding(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 16,
-                                                          vertical: 10),
-                                                      child: Row(
-                                                        children: [
-                                                          Icon(
-                                                            hasAny
-                                                                ? Icons
-                                                                    .rate_review_rounded
-                                                                : Icons
-                                                                    .edit_note_rounded,
-                                                            size: 20,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .primary,
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                            child: Column(
-                                                              crossAxisAlignment:
-                                                                  CrossAxisAlignment
-                                                                      .start,
-                                                              mainAxisSize:
-                                                                  MainAxisSize
-                                                                      .min,
-                                                              children: [
-                                                                Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .spaceBetween,
-                                                                  children: [
-                                                                    Text(
-                                                                      hasAny
-                                                                          ? '我的评价'
-                                                                          : '写短评',
-                                                                      style:
-                                                                          TextStyle(
-                                                                        fontSize:
-                                                                            13,
-                                                                        color: Theme.of(context)
-                                                                            .colorScheme
-                                                                            .onSurfaceVariant,
-                                                                      ),
-                                                                    ),
-                                                                    if (hasRating)
-                                                                      Text(
-                                                                        '${infoController.userRating} / 10',
-                                                                        style:
-                                                                            TextStyle(
-                                                                          fontSize:
-                                                                              12,
-                                                                          fontWeight:
-                                                                              FontWeight.w600,
-                                                                          color: Theme.of(context)
-                                                                              .colorScheme
-                                                                              .primary,
-                                                                        ),
-                                                                      ),
-                                                                  ],
-                                                                ),
-                                                                if (hasComment) ...[
-                                                                  const SizedBox(
-                                                                      height:
-                                                                          4),
-                                                                  Text(
-                                                                    infoController
-                                                                        .userComment,
-                                                                    maxLines: 2,
-                                                                    overflow:
-                                                                        TextOverflow
-                                                                            .ellipsis,
-                                                                    style:
-                                                                        TextStyle(
-                                                                      fontSize:
-                                                                          12,
-                                                                      color: Theme.of(
-                                                                              context)
-                                                                          .colorScheme
-                                                                          .onSurface,
-                                                                    ),
-                                                                  ),
-                                                                ] else if (!hasRating) ...[
-                                                                  const SizedBox(
-                                                                      height:
-                                                                          4),
-                                                                  Text(
-                                                                    '点击给这部番剧评分或留下短评',
-                                                                    style:
-                                                                        TextStyle(
-                                                                      fontSize:
-                                                                          12,
-                                                                      color: Theme.of(
-                                                                              context)
-                                                                          .colorScheme
-                                                                          .onSurfaceVariant,
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Icon(
-                                                            Icons.chevron_right,
-                                                            size: 18,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }),
-                                      ],
+                                    child: BangumiInfoCardV(
+                                      bangumiItem: infoController.bangumiItem,
+                                      isLoading: showBangumiInfoSkeleton,
+                                      showRating: showRating,
                                     ),
                                   ),
                                 ),
@@ -854,6 +405,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
               ];
             },
             body: Observer(builder: (context) {
+              final showBangumiInfoSkeleton = _isShowingBangumiInfoSkeleton;
               return InfoTabView(
                 tabController: infoTabController,
                 bangumiItem: infoController.bangumiItem,
@@ -869,28 +421,147 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                 commentsList: infoController.commentsList,
                 characterList: infoController.characterList,
                 staffList: infoController.staffList,
-                isLoading: infoController.isLoading,
-                relatedSubjectList: infoController.relatedSubjectList,
-                relatedSubjectsLoading: infoController.relatedSubjectsLoading,
+                isLoading: showBangumiInfoSkeleton,
               );
             }),
           ),
-          floatingActionButton: GestureDetector(
-            onLongPress: _showSourceSheet,
-            child: FloatingActionButton.extended(
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text('开始观看'),
-              onPressed: () async {
-                if (watchNow) {
-                  await _watchNow();
-                  return;
-                }
-                _showSourceSheet();
-              },
-            ),
+          floatingActionButton: FloatingActionButton.extended(
+            icon: const Icon(Icons.play_arrow_rounded),
+            label: Text('开始观看'),
+            onPressed: () async {
+              showModalBottomSheet(
+                isScrollControlled: true,
+                constraints: BoxConstraints(
+                  maxHeight: (MediaQuery.sizeOf(context).height >=
+                          LayoutBreakpoint.compact['height']!)
+                      ? MediaQuery.of(context).size.height * 3 / 4
+                      : MediaQuery.of(context).size.height,
+                  maxWidth: (MediaQuery.sizeOf(context).width >=
+                          LayoutBreakpoint.medium['width']!)
+                      ? MediaQuery.of(context).size.width * 9 / 16
+                      : MediaQuery.of(context).size.width,
+                ),
+                clipBehavior: Clip.antiAlias,
+                backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+                showDragHandle: true,
+                context: context,
+                builder: (context) {
+                  return SourceSheet(
+                      tabController: sourceTabController,
+                      infoController: infoController);
+                },
+              );
+            },
           ),
         ),
       ),
+    );
+  }
+}
+
+class _InfoHeaderBackground extends StatelessWidget {
+  const _InfoHeaderBackground({
+    required this.imageUrl,
+  });
+
+  static const double _downsample = 0.5;
+  static const double _blurSigma = 15.0;
+  static const double _opacity = 0.4;
+  static const double _edgeBleed = 32.0;
+  static const double _bottomFeatherHeight = 48.0;
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
+        if (width <= 0 || height <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        final rasterWidth = width * _downsample;
+        final rasterHeight = (height + _edgeBleed) * _downsample;
+
+        final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+
+        return ClipRect(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) {
+                  return const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white,
+                      Colors.transparent,
+                    ],
+                    stops: [0.8, 1],
+                  ).createShader(bounds);
+                },
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: RepaintBoundary(
+                    child: Transform.scale(
+                      scale: 1 / _downsample,
+                      alignment: Alignment.topCenter,
+                      filterQuality: FilterQuality.low,
+                      child: SizedBox(
+                        width: rasterWidth,
+                        height: rasterHeight,
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(
+                            sigmaX: _blurSigma * _downsample,
+                            sigmaY: _blurSigma * _downsample,
+                          ),
+                          child: NetworkImgLayer(
+                            src: imageUrl,
+                            width: rasterWidth,
+                            height: rasterHeight,
+                            fadeInDuration: Duration.zero,
+                            fadeOutDuration: Duration.zero,
+                            filterQuality: FilterQuality.low,
+                            color: Colors.white.withValues(alpha: _opacity),
+                            colorBlendMode: BlendMode.modulate,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: _bottomFeatherHeight,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        backgroundColor.withValues(alpha: 0),
+                        backgroundColor.withValues(alpha: 0.55),
+                        backgroundColor,
+                      ],
+                      stops: const [0, 0.72, 1],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }

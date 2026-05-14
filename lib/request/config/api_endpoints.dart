@@ -1,40 +1,15 @@
-class Api {
+class ApiEndpoints {
   /// 当前版本
-  static const String version = '2.1.0';
-
-  /// 当前构建号
-  static const String buildNumber = '20100';
-
-  /// 分支版本号，优先使用构建时注入的值
-  static const String _branchVersion = String.fromEnvironment('BRANCH_VERSION');
-
-  /// 上游版本号，优先使用构建时注入的值
-  static const String _upstreamVersion =
-      String.fromEnvironment('UPSTREAM_VERSION');
-
-  /// 构建 Commit，优先使用构建时注入的值
-  static const String _buildCommit = String.fromEnvironment('BUILD_COMMIT');
-
-  static String get branchVersion =>
-      _branchVersion.isNotEmpty ? _branchVersion : '$version+$buildNumber';
-
-  static String get upstreamVersion =>
-      _upstreamVersion.isNotEmpty ? _upstreamVersion : version;
-
-  static String get buildCommit =>
-      _buildCommit.isNotEmpty ? _buildCommit : 'dev';
-
-  static String get buildCommitShort =>
-      buildCommit.length > 7 ? buildCommit.substring(0, 7) : buildCommit;
+  static const String version = '2.1.1';
 
   /// 规则API级别
   static const int apiLevel = 6;
 
   /// 项目主页
-  static const String projectUrl = "https://github.com/starlit-dream/Kazumas";
+  static const String projectUrl = "https://kazumi.app/";
 
   /// Github 项目主页
-  static const String sourceUrl = "https://github.com/starlit-dream/Kazumas";
+  static const String sourceUrl = "https://github.com/Predidit/Kazumi";
 
   /// 图标作者
   static const String iconUrl = "https://www.pixiv.net/users/66219277";
@@ -45,7 +20,7 @@ class Api {
 
   /// 在线升级
   static const String latestApp =
-      'https://api.github.com/repos/starlit-dream/Kazumas/releases/latest';
+      'https://api.github.com/repos/Predidit/Kazumi/releases/latest';
 
   /// Github镜像
   static const String gitMirror = 'https://ghfast.top/';
@@ -58,13 +33,6 @@ class Api {
 
   /// bangumi API Domain
   static const String bangumiAPIDomain = 'https://api.bgm.tv';
-  static const String bangumiMyself = '/v0/me';
-  static const String bangumiMyCollection = '/v0/users/-/collections/{0}';
-  static const String bangumiMyCollectionEpisodes =
-      '/v0/users/-/collections/{0}/episodes';
-  static const String bangumiMyEpisodeCollection =
-      '/v0/users/-/collections/-/episodes/{0}';
-  static const String bangumiUserCollections = '/v0/users/{0}/collections';
 
   /// 番剧信息
   static const String bangumiInfoByID = '/v0/subjects/{0}';
@@ -78,9 +46,6 @@ class Api {
 
   /// 从条目ID获取剧集ID
   static const String bangumiEpisodeByID = '/v0/episodes';
-
-  /// 条目关联关系
-  static const String bangumiSubjectRelation = '/v0/subjects/{0}/subjects';
 
   /// 返回当前 Access Token 对应的用户信息
   static const String bangumiUsernameByToken = '/v0/me';
