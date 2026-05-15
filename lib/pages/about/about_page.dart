@@ -280,8 +280,8 @@ class _AboutPageState extends State<AboutPage> {
                       ],
                     ),
                   ),
-                  SettingsTile.custom(
-                    onTap: (_) => myController.checkUpdate(),
+                  SettingsTile.navigation(
+                    onPressed: (_) => myController.checkUpdate(),
                     leading: const Icon(Icons.system_update_alt_rounded),
                     title: Text('检查更新', style: TextStyle(fontFamily: fontFamily)),
                   ),
