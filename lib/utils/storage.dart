@@ -423,5 +423,8 @@ class SettingBoxKey {
       brightnessVolumeGesture = 'brightnessVolumeGesture',
       historySyncDeviceId = 'historySyncDeviceId',
       historySyncSequence = 'historySyncSequence',
-      historySyncSnapshotInitialized = 'historySyncSnapshotInitialized';
+      historySyncSnapshotInitialized = 'historySyncSnapshotInitialized',
+      finishReviewPopupEnabled = 'finishReviewPopupEnabled',
+      finishReviewSkippedSubjects = 'finishReviewSkippedSubjects',
+      watchNow = 'watchNow';
 }

@@ -1,3 +1,4 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -6,6 +7,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:kazumi/modules/bangumi/bangumi_auth_models.dart';
 import 'package:kazumi/request/config/api_endpoints.dart';
 import 'package:kazumi/request/apis/bangumi_api.dart';
+import 'package:kazumi/request/core/dio_factory.dart';
 import 'package:kazumi/utils/bangumi_oauth.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:kazumi/utils/utils.dart';
@@ -229,7 +231,7 @@ class BangumiAuth {
       return false;
     }
 
-    final response = await Request().post(
+    final response = await DioFactory.apiDio.post(
       '${ApiEndpoints.bangumiIndex}oauth/access_token',
       data: {
         'grant_type': 'refresh_token',
@@ -243,7 +245,6 @@ class BangumiAuth {
           'user-agent': Utils.getRandomUA(),
         },
       ),
-      shouldRethrow: true,
     );
     final token = BangumiOauthToken.fromJson(
       Map<String, dynamic>.from(response.data),
@@ -356,19 +357,19 @@ class BangumiAuth {
 
   static Future<BangumiAuthUser> _getCurrentUserWithToken(
       String accessToken) async {
-    final res = await Request().get(
-      ApiEndpoints.bangumiAPIDomain + ApiEndpoints.bangumiMyself,
-      options:
-          Options(headers: {'Authorization': 'Bearer ${accessToken.trim()}'}),
-      extra: {'customError': 'Bangumi 登录校验失败'},
-      shouldRethrow: true,
+    final res = await DioFactory.apiDio.get(
+      ApiEndpoints.bangumiAPIDomain + ApiEndpoints.bangumiUsernameByToken,
+      options: Options(
+        headers: {'Authorization': 'Bearer ${accessToken.trim()}'},
+        extra: {'customError': 'Bangumi 登录校验失败'},
+      ),
     );
     return BangumiAuthUser.fromJson(Map<String, dynamic>.from(res.data));
   }
 
   static Future<BangumiOauthToken> _exchangeAuthorizationCode(
       String code) async {
-    final tokenResponse = await Request().post(
+    final tokenResponse = await DioFactory.apiDio.post(
       '${ApiEndpoints.bangumiIndex}oauth/access_token',
       data: {
         'grant_type': 'authorization_code',
@@ -384,7 +385,6 @@ class BangumiAuth {
           'user-agent': Utils.getRandomUA(),
         },
       ),
-      shouldRethrow: true,
     );
     return BangumiOauthToken.fromJson(
       Map<String, dynamic>.from(tokenResponse.data),
@@ -409,7 +409,7 @@ class BangumiAuth {
       return '';
     }
     final inlineCodeMatch =
-        RegExp(r'(?:^|[?&\s])code=([^&\s]+)').firstMatch(trimmed);
+        RegExp(r'(?:^|[?&\\s])code=([^&\\s]+)').firstMatch(trimmed);
     if (inlineCodeMatch != null) {
       return Uri.decodeComponent(inlineCodeMatch.group(1) ?? '').trim();
     }
@@ -419,7 +419,7 @@ class BangumiAuth {
 
   static String _extractInputValue(String html, String name) {
     final document = html_parser.parse(html);
-    final input = document.querySelector('input[name="$name"]');
+    final input = document.querySelector('input[name=\"$name\"]');
     return input?.attributes['value']?.trim() ?? '';
   }
 
@@ -498,3 +498,100 @@ class BangumiAuth {
 
   static Future<BangumiCaptchaChallenge> _fetchCaptcha(
     _BangumiLoginSession session,
+  ) async {
+    final suffix =
+        '${DateTime.now().millisecondsSinceEpoch}${1 + DateTime.now().millisecond % 6}';
+    final response = await session.dio.get<List<int>>(
+      '${ApiEndpoints.bangumiIndex}signup/captcha?$suffix',
+      options: Options(
+        responseType: ResponseType.bytes,
+        headers: {'cookie': session.cookie},
+      ),
+    );
+    session.cookie =
+        _mergeCookie(session.cookie, response.headers['set-cookie']);
+    final bytes = Uint8List.fromList(response.data ?? const <int>[]);
+    if (bytes.isEmpty) {
+      throw Exception('Bangumi 验证码加载失败');
+    }
+    return BangumiCaptchaChallenge(
+      imageBytes: bytes,
+      issuedAt: DateTime.now(),
+    );
+  }
+}
+
+class BangumiOauthToken {
+  final String accessToken;
+  final String refreshToken;
+  final String tokenType;
+  final String scope;
+  final int expiresIn;
+  final DateTime? expiresAt;
+
+  const BangumiOauthToken({
+    required this.accessToken,
+    required this.refreshToken,
+    required this.tokenType,
+    required this.scope,
+    required this.expiresIn,
+    required this.expiresAt,
+  });
+
+  factory BangumiOauthToken.fromJson(Map<String, dynamic> json) {
+    final expiresIn = int.tryParse((json['expires_in'] ?? '0').toString()) ?? 0;
+    return BangumiOauthToken(
+      accessToken: (json['access_token'] ?? '').toString().trim(),
+      refreshToken: (json['refresh_token'] ?? '').toString().trim(),
+      tokenType: (json['token_type'] ?? 'Bearer').toString().trim(),
+      scope: (json['scope'] ?? '').toString(),
+      expiresIn: expiresIn,
+      expiresAt: expiresIn > 0
+          ? DateTime.now().add(Duration(seconds: expiresIn))
+          : null,
+    );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'access_token': accessToken,
+      'refresh_token': refreshToken,
+      'token_type': tokenType,
+      'scope': scope,
+      'expires_in': expiresIn,
+      'expires_at': expiresAt?.toIso8601String() ?? '',
+    };
+  }
+}
+
+class _BangumiLoginResult {
+  final BangumiOauthToken token;
+  final BangumiAuthUser user;
+
+  const _BangumiLoginResult({
+    required this.token,
+    required this.user,
+  });
+}
+
+class BangumiCaptchaChallenge {
+  final Uint8List imageBytes;
+  final DateTime issuedAt;
+
+  const BangumiCaptchaChallenge({
+    required this.imageBytes,
+    required this.issuedAt,
+  });
+}
+
+class _BangumiLoginSession {
+  final Dio dio;
+  final String formhash;
+  String cookie;
+
+  _BangumiLoginSession({
+    required this.dio,
+    required this.cookie,
+    required this.formhash,
+  });
+}

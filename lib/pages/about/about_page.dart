@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:card_settings_ui/card_settings_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
@@ -30,6 +31,7 @@ class _AboutPageState extends State<AboutPage> {
   late int exitBehavior =
       setting.get(SettingBoxKey.exitBehavior, defaultValue: 2);
   double _cacheSizeMB = -1;
+  final MenuController menuController = MenuController();
 
   String get _appVersionDisplay => '${ApiEndpoints.version}+${ApiEndpoints.buildNumber}';
 
@@ -260,19 +262,18 @@ class _AboutPageState extends State<AboutPage> {
                               ),
                             ),
                           ),
-                        ),
-                        const SizedBox(height: 4),
+                          const SizedBox(height: 4),
                         Text(
                           '一个基于Kazumi的客户端，增加了部分新的功能。',
-                          style: theme.textTheme.bodyMedium?.copyWith(
-                            color: theme.colorScheme.onSurfaceVariant,
+                          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                            color: Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                         ),
                         const SizedBox(height: 8),
                         Text(
                           '版本 $_appVersionDisplay',
-                          style: theme.textTheme.labelLarge?.copyWith(
-                            color: theme.colorScheme.primary,
+                          style: Theme.of(context).textTheme.labelLarge?.copyWith(
+                            color: Theme.of(context).colorScheme.primary,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -286,7 +287,6 @@ class _AboutPageState extends State<AboutPage> {
                   ),
                 ],
               ),
-            ),
             SettingsSection(
               tiles: [
                 SettingsTile.navigation(
@@ -328,173 +328,4 @@ class _AboutPageState extends State<AboutPage> {
       ),
     );
   }
-
-  Widget _buildAppSection(BuildContext context) {
-    return _buildCardSection(
-      context: context,
-      title: '应用',
-      children: [
-        SwitchListTile.adaptive(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          secondary: const Icon(Icons.auto_awesome_rounded),
-          title: const Text('自动更新'),
-          subtitle: const Text('启动时自动检查更新'),
-          value: autoUpdate,
-          onChanged: (value) async {
-            autoUpdate = value;
-            await setting.put(SettingBoxKey.autoUpdate, value);
-            if (mounted) {
-              setState(() {});
-            }
-          },
-        ),
-        _buildActionTile(
-          icon: Icons.article_outlined,
-          title: '错误日志',
-          subtitle: '查看运行日志',
-          onTap: () {
-            Modular.to.pushNamed('/settings/about/logs');
-          },
-        ),
-        _buildActionTile(
-          icon: Icons.cleaning_services_outlined,
-          title: '清除缓存',
-          subtitle: _cacheSizeMB == -1
-              ? '正在统计…'
-              : '当前 ${_cacheSizeMB.toStringAsFixed(2)}MB',
-          trailing: const Icon(Icons.delete_outline_rounded),
-          onTap: _showCacheDialog,
-        ),
-        _buildActionTile(
-          icon: Icons.gavel_rounded,
-          title: '开源许可证',
-          subtitle: '查看依赖许可证',
-          onTap: () {
-            Modular.to.pushNamed('/settings/about/license');
-          },
-        ),
-      ],
-    );
-  }
-
-  Widget _buildLinkSection(BuildContext context) {
-    return _buildCardSection(
-      context: context,
-      title: '链接',
-      children: [
-        _buildActionTile(
-          icon: Icons.public_rounded,
-          title: '项目主页',
-          subtitle: ApiEndpoints.projectUrl,
-          trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(ApiEndpoints.projectUrl),
-        ),
-        _buildActionTile(
-          icon: Icons.code_rounded,
-          title: '代码仓库',
-          subtitle: ApiEndpoints.sourceUrl,
-          trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(ApiEndpoints.sourceUrl),
-        ),
-        _buildActionTile(
-          icon: Icons.palette_outlined,
-          title: '图标作者',
-          subtitle: 'Pixiv',
-          trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(ApiEndpoints.iconUrl),
-        ),
-        _buildActionTile(
-          icon: Icons.live_tv_rounded,
-          title: '番剧索引',
-          subtitle: 'Bangumi',
-          trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(ApiEndpoints.bangumiIndex),
-        ),
-        _buildActionTile(
-          icon: Icons.subtitles_rounded,
-          title: '弹幕来源',
-          subtitle: 'DanDanPlay · ${mortis['id']}',
-          trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(ApiEndpoints.dandanIndex),
-        ),
-      ],
-    );
-  }
-
-  Widget _buildDesktopSection(BuildContext context) {
-    return _buildCardSection(
-      context: context,
-      title: '桌面',
-      children: [
-        ListTile(
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
-          leading: const Icon(Icons.desktop_windows_outlined),
-          title: const Text('关闭窗口时'),
-          subtitle: const Text('设置桌面端默认行为'),
-          trailing: PopupMenuButton<int>(
-            initialValue: exitBehavior,
-            onSelected: (value) async {
-              exitBehavior = value;
-              await setting.put(SettingBoxKey.exitBehavior, value);
-              if (mounted) {
-                setState(() {});
-              }
-            },
-            itemBuilder: (context) => [
-              for (int i = 0; i < exitBehaviorTitles.length; i++)
-                PopupMenuItem<int>(
-                  value: i,
-                  child: Text(exitBehaviorTitles[i]),
-                ),
-            ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(exitBehaviorTitles[exitBehavior]),
-                  const SizedBox(width: 4),
-                  const Icon(Icons.arrow_drop_down_rounded),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return PopScope(
-      canPop: true,
-      onPopInvokedWithResult: (didPop, result) {
-        onBackPressed(context);
-      },
-      child: Scaffold(
-        appBar: const SysAppBar(title: Text('关于')),
-        body: SafeArea(
-          child: Align(
-            alignment: Alignment.topCenter,
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 1000),
-              child: ListView(
-                padding: const EdgeInsets.all(16),
-                children: [
-                  _buildHeaderCard(context),
-                  const SizedBox(height: 20),
-                  _buildAppSection(context),
-                  const SizedBox(height: 20),
-                  _buildLinkSection(context),
-                  if (Utils.isDesktop()) ...[
-                    const SizedBox(height: 20),
-                    _buildDesktopSection(context),
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    );
-  }
+}
