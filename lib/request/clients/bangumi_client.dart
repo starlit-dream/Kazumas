@@ -52,6 +52,48 @@ class BangumiClient {
     }
   }
 
+  Future<dynamic> patch(
+    String url, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+    bool requiresAuth = false,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final response = await DioFactory.apiDio.patch(
+        url,
+        data: data,
+        queryParameters: queryParameters,
+        options: Options(headers: _headers(requiresAuth: requiresAuth)),
+        cancelToken: cancelToken,
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw await NetworkErrorMapper.mapException(e);
+    }
+  }
+
+  Future<dynamic> put(
+    String url, {
+    Object? data,
+    Map<String, dynamic>? queryParameters,
+    bool requiresAuth = false,
+    CancelToken? cancelToken,
+  }) async {
+    try {
+      final response = await DioFactory.apiDio.put(
+        url,
+        data: data,
+        queryParameters: queryParameters,
+        options: Options(headers: _headers(requiresAuth: requiresAuth)),
+        cancelToken: cancelToken,
+      );
+      return response.data;
+    } on DioException catch (e) {
+      throw await NetworkErrorMapper.mapException(e);
+    }
+  }
+
   Map<String, dynamic> _headers({required bool requiresAuth}) {
     final headers = <String, dynamic>{...bangumiHTTPHeader};
     final bangumiSyncEnable =

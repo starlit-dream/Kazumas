@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:kazumi/pages/info/info_controller.dart';
-import 'package:kazumi/request/bangumi.dart';
+import 'package:kazumi/request/apis/bangumi_api.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 
 class ProgressEditor extends StatefulWidget {
@@ -228,7 +228,7 @@ class _ProgressEditorState extends State<ProgressEditor> {
           watched ? ids.length : 0;
 
       // Sync to Bangumi
-      await BangumiHTTP.batchUpdateEpisodeProgress(
+      await BangumiApi.batchUpdateEpisodeProgress(
         subjectId: widget.infoController.bangumiItem.id,
         episodeIds: ids,
         type: type,

@@ -31,7 +31,7 @@ class _AboutPageState extends State<AboutPage> {
       setting.get(SettingBoxKey.exitBehavior, defaultValue: 2);
   double _cacheSizeMB = -1;
 
-  String get _appVersionDisplay => '${Api.version}+${Api.buildNumber}';
+  String get _appVersionDisplay => '${ApiEndpoints.version}+${ApiEndpoints.buildNumber}';
 
   @override
   void initState() {
@@ -385,37 +385,37 @@ class _AboutPageState extends State<AboutPage> {
         _buildActionTile(
           icon: Icons.public_rounded,
           title: '项目主页',
-          subtitle: Api.projectUrl,
+          subtitle: ApiEndpoints.projectUrl,
           trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(Api.projectUrl),
+          onTap: () => _openExternal(ApiEndpoints.projectUrl),
         ),
         _buildActionTile(
           icon: Icons.code_rounded,
           title: '代码仓库',
-          subtitle: Api.sourceUrl,
+          subtitle: ApiEndpoints.sourceUrl,
           trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(Api.sourceUrl),
+          onTap: () => _openExternal(ApiEndpoints.sourceUrl),
         ),
         _buildActionTile(
           icon: Icons.palette_outlined,
           title: '图标作者',
           subtitle: 'Pixiv',
           trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(Api.iconUrl),
+          onTap: () => _openExternal(ApiEndpoints.iconUrl),
         ),
         _buildActionTile(
           icon: Icons.live_tv_rounded,
           title: '番剧索引',
           subtitle: 'Bangumi',
           trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(Api.bangumiIndex),
+          onTap: () => _openExternal(ApiEndpoints.bangumiIndex),
         ),
         _buildActionTile(
           icon: Icons.subtitles_rounded,
           title: '弹幕来源',
           subtitle: 'DanDanPlay · ${mortis['id']}',
           trailing: const Icon(Icons.open_in_new_rounded),
-          onTap: () => _openExternal(Api.dandanIndex),
+          onTap: () => _openExternal(ApiEndpoints.dandanIndex),
         ),
       ],
     );
@@ -498,4 +498,3 @@ class _AboutPageState extends State<AboutPage> {
       ),
     );
   }
-}

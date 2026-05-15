@@ -10,7 +10,7 @@ import 'package:kazumi/utils/bangumi_sync_service.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:kazumi/utils/webdav.dart';
-import 'package:kazumi/request/bangumi.dart';
+import 'package:kazumi/request/apis/bangumi_api.dart';
 import 'package:kazumi/repositories/collect_crud_repository.dart';
 import 'package:kazumi/repositories/collect_repository.dart';
 import 'package:hive_ce/hive.dart';
@@ -49,7 +49,7 @@ abstract class _CollectController with Store {
     if (!BangumiAuth.isLoggedIn) {
       return null;
     }
-    final int? remoteType = await BangumiHTTP.getCollectionType(bangumiItem.id);
+    final int? remoteType = await BangumiApi.getCollectionType(bangumiItem.id);
     if (remoteType == null) {
       return null;
     }
@@ -67,7 +67,7 @@ abstract class _CollectController with Store {
     if (!BangumiAuth.isLoggedIn || type == 0) {
       return;
     }
-    await BangumiHTTP.updateCollectionType(bangumiItem.id, type);
+    await BangumiApi.updateCollectionType(bangumiItem.id, type);
   }
 
   Future<void> markEpisodeWatchedIfNeeded({
@@ -82,8 +82,8 @@ abstract class _CollectController with Store {
     if (currentType != 1) {
       return;
     }
-    await BangumiHTTP.updateCollectionType(subjectId, 1);
-    await BangumiHTTP.markEpisodeWatched(subjectId: subjectId, episodeId: episodeId);
+    await BangumiApi.updateCollectionType(subjectId, 1);
+    await BangumiApi.markEpisodeWatched(subjectId: subjectId, episodeId: episodeId);
   }
 
   int getCollectType(BangumiItem bangumiItem) {

@@ -2,6 +2,31 @@ class ApiEndpoints {
   /// 当前版本
   static const String version = '2.1.1';
 
+  /// 当前构建号
+  static const String buildNumber = '20100';
+
+  /// 分支版本号，优先使用构建时注入的值
+  static const String _branchVersion = String.fromEnvironment('BRANCH_VERSION');
+
+  /// 上游版本号，优先使用构建时注入的值
+  static const String _upstreamVersion =
+      String.fromEnvironment('UPSTREAM_VERSION');
+
+  /// 构建 Commit，优先使用构建时注入的值
+  static const String _buildCommit = String.fromEnvironment('BUILD_COMMIT');
+
+  static String get branchVersion =>
+      _branchVersion.isNotEmpty ? _branchVersion : '$version+$buildNumber';
+
+  static String get upstreamVersion =>
+      _upstreamVersion.isNotEmpty ? _upstreamVersion : version;
+
+  static String get buildCommit =>
+      _buildCommit.isNotEmpty ? _buildCommit : 'dev';
+
+  static String get buildCommitShort =>
+      buildCommit.length > 7 ? buildCommit.substring(0, 7) : buildCommit;
+
   /// 规则API级别
   static const int apiLevel = 6;
 
@@ -56,6 +81,17 @@ class ApiEndpoints {
   /// 获取用户收藏。用户名，分页参数1，分页参数2
   static const String bangumiGetCollection =
       '/v0/users/{0}/collections?subject_type=2&limit={1}&offset={2}&type={3}';
+
+  /// 获取用户剧集进度
+  static const String bangumiMyCollectionEpisodes =
+      '/v0/users/-/collections/{0}/episodes';
+
+  /// 获取或修改用户单集进度
+  static const String bangumiMyEpisodeCollection =
+      '/v0/users/-/collections/-/episodes/{0}';
+
+  /// 条目关联关系
+  static const String bangumiSubjectRelation = '/v0/subjects/{0}/subjects';
 
   /// Bangumi Next API Domain
   static const String bangumiAPINextDomain = 'https://next.bgm.tv';

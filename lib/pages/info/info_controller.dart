@@ -103,7 +103,7 @@ abstract class _InfoController with Store {
     syncedCollectType =
         await collectController.syncBangumiCollectionType(bangumiItem) ?? 0;
     if (BangumiAuth.isLoggedIn) {
-      final collection = await BangumiHTTP.getUserSubjectCollection(bangumiItem.id);
+      final collection = await BangumiApi.getUserSubjectCollection(bangumiItem.id);
       userRating = collection?.rate;
       userComment = collection?.comment ?? '';
       userCommentPrivate = collection?.private ?? false;
@@ -115,7 +115,7 @@ abstract class _InfoController with Store {
     if (!BangumiAuth.isLoggedIn) return;
     try {
       final collection =
-          await BangumiHTTP.getUserSubjectCollection(bangumiItem.id);
+          await BangumiApi.getUserSubjectCollection(bangumiItem.id);
       userRating = collection?.rate;
       userComment = collection?.comment ?? '';
       userCommentPrivate = collection?.private ?? false;
@@ -136,7 +136,7 @@ abstract class _InfoController with Store {
 
   Future<void> updateUserRating(int rating) async {
     try {
-      await BangumiHTTP.updateUserRating(bangumiItem.id, rating);
+      await BangumiApi.updateUserRating(bangumiItem.id, rating);
       userRating = rating;
       KazumiDialog.showToast(message: '评分已更新');
     } catch (e) {
@@ -192,7 +192,7 @@ abstract class _InfoController with Store {
     if (episodeProgressLoading) return;
     episodeProgressLoading = true;
     try {
-      final progress = await BangumiHTTP.getEpisodeProgress(subjectId);
+      final progress = await BangumiApi.getEpisodeProgress(subjectId);
       if (progress != null) {
         episodeProgressMap.clear();
         for (final ep in progress.data) {
@@ -226,7 +226,7 @@ abstract class _InfoController with Store {
       if (episodeProgressWatched < 0) episodeProgressWatched = 0;
 
       // Sync to Bangumi
-      await BangumiHTTP.batchUpdateEpisodeProgress(
+      await BangumiApi.batchUpdateEpisodeProgress(
         subjectId: subjectId,
         episodeIds: [episodeId],
         type: type,
@@ -256,7 +256,7 @@ abstract class _InfoController with Store {
     if (bangumiEpisodesLoading) return;
     bangumiEpisodesLoading = true;
     try {
-      final episodes = await BangumiHTTP.getBangumiEpisodes(subjectId);
+      final episodes = await BangumiApi.getBangumiEpisodes(subjectId);
       bangumiEpisodeList.clear();
       bangumiEpisodeList.addAll(
         episodes.map((ep) => {
@@ -314,7 +314,7 @@ abstract class _InfoController with Store {
     if (relatedSubjectsLoading) return;
     relatedSubjectsLoading = true;
     try {
-      final relations = await BangumiHTTP.getSubjectRelations(subjectId);
+      final relations = await BangumiApi.getSubjectRelations(subjectId);
       relations.sort((a, b) {
         final priorityA = _getRelationPriority(a.relation);
         final priorityB = _getRelationPriority(b.relation);

@@ -4,7 +4,7 @@ import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/bangumi_auth_models.dart';
-import 'package:kazumi/request/bangumi.dart';
+import 'package:kazumi/request/apis/bangumi_api.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:kazumi/utils/finish_review_trigger.dart';
 import 'package:kazumi/utils/logger.dart';
@@ -95,7 +95,7 @@ class _FinishReviewSheetState extends State<FinishReviewSheet> {
   Future<void> _loadExisting() async {
     try {
       final BangumiSubjectCollection? collection =
-          await BangumiHTTP.getUserSubjectCollection(widget.bangumiItem.id);
+          await BangumiApi.getUserSubjectCollection(widget.bangumiItem.id);
       if (!mounted) return;
       if (collection != null) {
         final hasRate = (collection.rate ?? 0) > 0;
@@ -129,7 +129,7 @@ class _FinishReviewSheetState extends State<FinishReviewSheet> {
       _submitting = true;
     });
     try {
-      await BangumiHTTP.updateUserReview(
+      await BangumiApi.updateUserReview(
         subjectId: widget.bangumiItem.id,
         rating: _rating > 0 ? _rating : null,
         comment: comment,

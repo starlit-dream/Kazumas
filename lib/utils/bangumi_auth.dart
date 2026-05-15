@@ -4,15 +4,14 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:kazumi/modules/bangumi/bangumi_auth_models.dart';
-import 'package:kazumi/request/api.dart';
-import 'package:kazumi/request/bangumi.dart';
-import 'package:kazumi/request/request.dart';
+import 'package:kazumi/request/config/api_endpoints.dart';
+import 'package:kazumi/request/apis/bangumi_api.dart';
 import 'package:kazumi/utils/bangumi_oauth.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:kazumi/utils/utils.dart';
 
 class BangumiAuth {
-  static const String _redirectUri = '${Api.bangumiIndex}dev/app';
+  static const String _redirectUri = '${ApiEndpoints.bangumiIndex}dev/app';
 
   static const String _secureUsernameKey = 'bangumiSecureUsername';
   static const String _securePasswordKey = 'bangumiSecurePassword';
@@ -44,7 +43,7 @@ class BangumiAuth {
 
   static String get authorizeUrl {
     _ensureOauthConfig();
-    return '${Api.bangumiIndex}oauth/authorize?client_id=$_appId&response_type=code&redirect_uri=${Uri.encodeComponent(_redirectUri)}';
+    return '${ApiEndpoints.bangumiIndex}oauth/authorize?client_id=$_appId&response_type=code&redirect_uri=${Uri.encodeComponent(_redirectUri)}';
   }
 
   static String get accessToken =>
@@ -132,7 +131,7 @@ class BangumiAuth {
     await clearRefreshTokenBundle();
     await saveToken(token);
     try {
-      final user = await BangumiHTTP.getCurrentUser();
+      final user = await BangumiApi.getCurrentUser();
       await saveUser(user);
       return user;
     } catch (_) {
@@ -151,7 +150,7 @@ class BangumiAuth {
     final token = await _exchangeAuthorizationCode(code);
     await clearSavedCredentials();
     await _saveTokenBundle(token);
-    final user = await BangumiHTTP.getCurrentUser();
+    final user = await BangumiApi.getCurrentUser();
     await saveUser(user);
     return user;
   }
@@ -196,7 +195,7 @@ class BangumiAuth {
     try {
       final localToken = accessToken.trim();
       if (localToken.isNotEmpty) {
-        await BangumiHTTP.getCurrentUser();
+        await BangumiApi.getCurrentUser();
         return true;
       }
     } catch (_) {}
@@ -231,7 +230,7 @@ class BangumiAuth {
     }
 
     final response = await Request().post(
-      '${Api.bangumiIndex}oauth/access_token',
+      '${ApiEndpoints.bangumiIndex}oauth/access_token',
       data: {
         'grant_type': 'refresh_token',
         'client_id': _appId,
@@ -250,7 +249,7 @@ class BangumiAuth {
       Map<String, dynamic>.from(response.data),
     );
     await _saveTokenBundle(token);
-    final user = await BangumiHTTP.getCurrentUser();
+    final user = await BangumiApi.getCurrentUser();
     await saveUser(user);
     return true;
   }
@@ -285,7 +284,7 @@ class BangumiAuth {
     _loginSession = session;
 
     final loginResponse = await session.dio.post(
-      '${Api.bangumiIndex}FollowTheRabbit',
+      '${ApiEndpoints.bangumiIndex}FollowTheRabbit',
       data: {
         'formhash': session.formhash,
         'referer': '',
@@ -358,7 +357,7 @@ class BangumiAuth {
   static Future<BangumiAuthUser> _getCurrentUserWithToken(
       String accessToken) async {
     final res = await Request().get(
-      Api.bangumiAPIDomain + Api.bangumiMyself,
+      ApiEndpoints.bangumiAPIDomain + ApiEndpoints.bangumiMyself,
       options:
           Options(headers: {'Authorization': 'Bearer ${accessToken.trim()}'}),
       extra: {'customError': 'Bangumi 登录校验失败'},
@@ -370,7 +369,7 @@ class BangumiAuth {
   static Future<BangumiOauthToken> _exchangeAuthorizationCode(
       String code) async {
     final tokenResponse = await Request().post(
-      '${Api.bangumiIndex}oauth/access_token',
+      '${ApiEndpoints.bangumiIndex}oauth/access_token',
       data: {
         'grant_type': 'authorization_code',
         'client_id': _appId,
@@ -483,7 +482,7 @@ class BangumiAuth {
       ),
     );
     String cookie = '';
-    final loginPage = await dio.get('${Api.bangumiIndex}login');
+    final loginPage = await dio.get('${ApiEndpoints.bangumiIndex}login');
     cookie = _mergeCookie(cookie, loginPage.headers['set-cookie']);
     final loginHtml = (loginPage.data ?? '').toString();
     final loginFormhash = _extractInputValue(loginHtml, 'formhash');
@@ -499,100 +498,3 @@ class BangumiAuth {
 
   static Future<BangumiCaptchaChallenge> _fetchCaptcha(
     _BangumiLoginSession session,
-  ) async {
-    final suffix =
-        '${DateTime.now().millisecondsSinceEpoch}${1 + DateTime.now().millisecond % 6}';
-    final response = await session.dio.get<List<int>>(
-      '${Api.bangumiIndex}signup/captcha?$suffix',
-      options: Options(
-        responseType: ResponseType.bytes,
-        headers: {'cookie': session.cookie},
-      ),
-    );
-    session.cookie =
-        _mergeCookie(session.cookie, response.headers['set-cookie']);
-    final bytes = Uint8List.fromList(response.data ?? const <int>[]);
-    if (bytes.isEmpty) {
-      throw Exception('Bangumi 验证码加载失败');
-    }
-    return BangumiCaptchaChallenge(
-      imageBytes: bytes,
-      issuedAt: DateTime.now(),
-    );
-  }
-}
-
-class BangumiOauthToken {
-  final String accessToken;
-  final String refreshToken;
-  final String tokenType;
-  final String scope;
-  final int expiresIn;
-  final DateTime? expiresAt;
-
-  const BangumiOauthToken({
-    required this.accessToken,
-    required this.refreshToken,
-    required this.tokenType,
-    required this.scope,
-    required this.expiresIn,
-    required this.expiresAt,
-  });
-
-  factory BangumiOauthToken.fromJson(Map<String, dynamic> json) {
-    final expiresIn = int.tryParse((json['expires_in'] ?? '0').toString()) ?? 0;
-    return BangumiOauthToken(
-      accessToken: (json['access_token'] ?? '').toString().trim(),
-      refreshToken: (json['refresh_token'] ?? '').toString().trim(),
-      tokenType: (json['token_type'] ?? 'Bearer').toString().trim(),
-      scope: (json['scope'] ?? '').toString(),
-      expiresIn: expiresIn,
-      expiresAt: expiresIn > 0
-          ? DateTime.now().add(Duration(seconds: expiresIn))
-          : null,
-    );
-  }
-
-  Map<String, dynamic> toJson() {
-    return {
-      'access_token': accessToken,
-      'refresh_token': refreshToken,
-      'token_type': tokenType,
-      'scope': scope,
-      'expires_in': expiresIn,
-      'expires_at': expiresAt?.toIso8601String() ?? '',
-    };
-  }
-}
-
-class _BangumiLoginResult {
-  final BangumiOauthToken token;
-  final BangumiAuthUser user;
-
-  const _BangumiLoginResult({
-    required this.token,
-    required this.user,
-  });
-}
-
-class BangumiCaptchaChallenge {
-  final Uint8List imageBytes;
-  final DateTime issuedAt;
-
-  const BangumiCaptchaChallenge({
-    required this.imageBytes,
-    required this.issuedAt,
-  });
-}
-
-class _BangumiLoginSession {
-  final Dio dio;
-  final String formhash;
-  String cookie;
-
-  _BangumiLoginSession({
-    required this.dio,
-    required this.cookie,
-    required this.formhash,
-  });
-}
