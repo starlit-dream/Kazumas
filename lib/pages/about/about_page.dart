@@ -280,10 +280,10 @@ class _AboutPageState extends State<AboutPage> {
                       ],
                     ),
                   ),
-                  FilledButton.tonalIcon(
-                    onPressed: myController.checkUpdate,
-                    icon: const Icon(Icons.system_update_alt_rounded),
-                    label: const Text('检查更新'),
+                  SettingsTile.custom(
+                    onTap: (_) => myController.checkUpdate(),
+                    leading: const Icon(Icons.system_update_alt_rounded),
+                    title: Text('检查更新', style: TextStyle(fontFamily: fontFamily)),
                   ),
                 ],
               ),

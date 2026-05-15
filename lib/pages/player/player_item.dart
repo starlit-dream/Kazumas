@@ -2010,3 +2010,4 @@ class _PlayerItemState extends State<PlayerItem>
       },
     );
   }
+}
