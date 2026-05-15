@@ -27,7 +27,7 @@ import 'package:kazumi/pages/history/history_controller.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/utils/storage.dart';
-import 'package:kazumi/request/damaku.dart';
+import 'package:kazumi/request/apis/danmaku_api.dart';
 import 'package:kazumi/modules/danmaku/danmaku_search_response.dart';
 import 'package:kazumi/modules/danmaku/danmaku_episode_response.dart';
 import 'package:kazumi/pages/player/player_item_surface.dart';
@@ -36,7 +36,7 @@ import 'package:kazumi/pages/my/my_controller.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 import 'package:kazumi/utils/audio_controller.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
-import 'package:kazumi/request/bangumi.dart';
+import 'package:kazumi/request/apis/bangumi_api.dart';
 
 class PlayerItem extends StatefulWidget {
   const PlayerItem({
@@ -293,7 +293,7 @@ class _PlayerItemState extends State<PlayerItem>
     try {
       await collectController
           .syncBangumiCollectionType(videoPageController.bangumiItem);
-      final episodeInfo = await BangumiHTTP.getBangumiEpisodeByID(
+      final episodeInfo = await BangumiApi.getBangumiEpisodeByID(
         videoPageController.bangumiItem.id,
         videoPageController.actualEpisodeNumber,
       );
@@ -301,7 +301,7 @@ class _PlayerItemState extends State<PlayerItem>
         return;
       }
       final remoteEpisodeType =
-          await BangumiHTTP.getEpisodeCollectionType(episodeInfo.id);
+          await BangumiApi.getEpisodeCollectionType(episodeInfo.id);
       if (remoteEpisodeType == 2) {
         _episodeWatchedReported = true;
       }
@@ -315,7 +315,7 @@ class _PlayerItemState extends State<PlayerItem>
 
   Future<void> _markEpisodeWatched() async {
     try {
-      final episodeInfo = await BangumiHTTP.getBangumiEpisodeByID(
+      final episodeInfo = await BangumiApi.getBangumiEpisodeByID(
         videoPageController.bangumiItem.id,
         videoPageController.actualEpisodeNumber,
       );
@@ -577,12 +577,14 @@ class _PlayerItemState extends State<PlayerItem>
     unawaited(_updateAndroidPIPActions(force: true));
   }
 
-  Future<void> _uploadHistoryToWebDav() async {
+  Future<void> _syncHistoryWithWebDav() async {
     if (webDavEnable && webDavEnableHistory) {
       try {
         var webDav = WebDav();
-        await webDav.updateHistory();
-      } catch (_) {}
+        await webDav.syncHistory();
+      } catch (e) {
+        KazumiLogger().w('WebDav: auto history sync failed', error: e);
+      }
     }
   }
 
@@ -661,7 +663,7 @@ class _PlayerItemState extends State<PlayerItem>
     playerController.lockPanel = false;
     playerController.danmakuController.clear();
 
-    await _uploadHistoryToWebDav();
+    await _syncHistoryWithWebDav();
   }
 
   void handleProgressBarDragStart(ThumbDragDetails details) {
@@ -918,17 +920,7 @@ class _PlayerItemState extends State<PlayerItem>
 
   Timer getPlayerTimer() {
     return Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (episodeNum != videoPageController.actualEpisodeNumber) {
-        episodeNum = videoPageController.actualEpisodeNumber;
-        _episodeWatchedReported = false;
-        unawaited(_syncBangumiProgressStateForCurrentEpisode());
-      }
-      playerController.playing = playerController.playerPlaying;
-      playerController.isBuffering = playerController.playerBuffering;
-      playerController.currentPosition = playerController.playerPosition;
-      playerController.buffer = playerController.playerBuffer;
-      playerController.duration = playerController.playerDuration;
-      playerController.completed = playerController.playerCompleted;
+      playerController.syncPlaybackState();
       unawaited(_updateAndroidPIPActions());
       _syncAudioServiceState();
       // 弹幕相关
@@ -1000,37 +992,18 @@ class _PlayerItemState extends State<PlayerItem>
       if (playerController.playerPlaying &&
           !videoPageController.loading &&
           !videoPageController.isOfflineMode) {
-        if (!WebDav().isHistorySyncing) {
-          final pluginName = videoPageController.isOfflineMode
-              ? videoPageController.offlinePluginName
-              : videoPageController.currentPlugin.name;
-          historyController.updateHistory(
-              videoPageController.actualEpisodeNumber,
-              videoPageController.currentRoad,
-              pluginName,
-              videoPageController.bangumiItem,
-              playerController.playerPosition,
-              videoPageController.src,
-              videoPageController.roadList[videoPageController.currentRoad]
-                  .identifier[videoPageController.currentEpisode - 1]);
-        }
-      }
-      final totalSeconds = playerController.duration.inSeconds;
-      final watchedSeconds = playerController.currentPosition.inSeconds;
-      final currentCollectType =
-          collectController.getCollectType(videoPageController.bangumiItem);
-      if (!_episodeWatchedReported &&
-          BangumiAuth.isLoggedIn &&
-          !videoPageController.isOfflineMode &&
-          currentCollectType == 1 &&
-          totalSeconds > 0 &&
-          watchedSeconds / totalSeconds >= _watchedAutoRecordThreshold) {
-        _episodeWatchedReported = true;
-        // 自动记录模式：静默发送已看过请求
-        if (_watchedAutoRecord) {
-          unawaited(_markEpisodeWatched());
-        }
-        // 胶囊弹窗由 _markEpisodeWatched() 在标记成功后自动弹出
+        final pluginName = videoPageController.isOfflineMode
+            ? videoPageController.offlinePluginName
+            : videoPageController.currentPlugin.name;
+        historyController.updateHistory(
+            videoPageController.actualEpisodeNumber,
+            videoPageController.currentRoad,
+            pluginName,
+            videoPageController.bangumiItem,
+            playerController.playerPosition,
+            videoPageController.src,
+            videoPageController.roadList[videoPageController.currentRoad]
+                .identifier[videoPageController.currentEpisode - 1]);
       }
       // 自动播放下一集
       if (playerController.completed &&
@@ -1060,7 +1033,7 @@ class _PlayerItemState extends State<PlayerItem>
     DanmakuEpisodeResponse danmakuEpisodeResponse;
     try {
       danmakuSearchResponse =
-          await DanmakuRequest.getDanmakuSearchResponse(keyword);
+          await DanmakuApi.getDanmakuSearchResponse(keyword);
     } catch (e) {
       KazumiDialog.dismiss();
       KazumiDialog.showToast(message: '弹幕检索错误: ${e.toString()}');
@@ -1085,7 +1058,7 @@ class _PlayerItemState extends State<PlayerItem>
                   KazumiDialog.showLoading(msg: '弹幕检索中');
                   try {
                     danmakuEpisodeResponse =
-                        await DanmakuRequest.getDanDanEpisodesByDanDanBangumiID(
+                        await DanmakuApi.getDanDanEpisodesByDanDanBangumiID(
                             danmakuInfo.animeId);
                   } catch (e) {
                     KazumiDialog.dismiss();
@@ -1925,7 +1898,6 @@ class _PlayerItemState extends State<PlayerItem>
                             disableAnimations: widget.disableAnimations,
                             skipOP: skipOP,
                           ),
-                    // 胶囊弹窗由 _markEpisodeWatched() 在标记成功后自动弹出
                     // 播放器手势控制
                     Positioned.fill(
                       left: 16,

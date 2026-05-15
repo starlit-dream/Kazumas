@@ -9,7 +9,7 @@ import 'package:kazumi/plugins/plugins_controller.dart';
 import 'package:kazumi/plugins/plugins.dart';
 import 'package:kazumi/pages/video/video_controller.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:kazumi/request/query_manager.dart';
+import 'package:kazumi/request/apis/query_manager.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/bean/widget/error_widget.dart';
 import 'dart:async';

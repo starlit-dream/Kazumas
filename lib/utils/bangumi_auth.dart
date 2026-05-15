@@ -1,18 +1,19 @@
+import 'dart:typed_data';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:kazumi/modules/bangumi/bangumi_auth_models.dart';
-import 'package:kazumi/request/api.dart';
-import 'package:kazumi/request/bangumi.dart';
-import 'package:kazumi/request/request.dart';
+import 'package:kazumi/request/config/api_endpoints.dart';
+import 'package:kazumi/request/apis/bangumi_api.dart';
+import 'package:kazumi/request/core/dio_factory.dart';
 import 'package:kazumi/utils/bangumi_oauth.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:kazumi/utils/utils.dart';
 
 class BangumiAuth {
-  static const String _redirectUri = '${Api.bangumiIndex}dev/app';
+  static const String _redirectUri = '${ApiEndpoints.bangumiIndex}dev/app';
 
   static const String _secureUsernameKey = 'bangumiSecureUsername';
   static const String _securePasswordKey = 'bangumiSecurePassword';
@@ -44,7 +45,7 @@ class BangumiAuth {
 
   static String get authorizeUrl {
     _ensureOauthConfig();
-    return '${Api.bangumiIndex}oauth/authorize?client_id=$_appId&response_type=code&redirect_uri=${Uri.encodeComponent(_redirectUri)}';
+    return '${ApiEndpoints.bangumiIndex}oauth/authorize?client_id=$_appId&response_type=code&redirect_uri=${Uri.encodeComponent(_redirectUri)}';
   }
 
   static String get accessToken =>
@@ -132,7 +133,7 @@ class BangumiAuth {
     await clearRefreshTokenBundle();
     await saveToken(token);
     try {
-      final user = await BangumiHTTP.getCurrentUser();
+      final user = await BangumiApi.getCurrentUser();
       await saveUser(user);
       return user;
     } catch (_) {
@@ -151,7 +152,7 @@ class BangumiAuth {
     final token = await _exchangeAuthorizationCode(code);
     await clearSavedCredentials();
     await _saveTokenBundle(token);
-    final user = await BangumiHTTP.getCurrentUser();
+    final user = await BangumiApi.getCurrentUser();
     await saveUser(user);
     return user;
   }
@@ -196,7 +197,7 @@ class BangumiAuth {
     try {
       final localToken = accessToken.trim();
       if (localToken.isNotEmpty) {
-        await BangumiHTTP.getCurrentUser();
+        await BangumiApi.getCurrentUser();
         return true;
       }
     } catch (_) {}
@@ -230,8 +231,8 @@ class BangumiAuth {
       return false;
     }
 
-    final response = await Request().post(
-      '${Api.bangumiIndex}oauth/access_token',
+    final response = await DioFactory.apiDio.post(
+      '${ApiEndpoints.bangumiIndex}oauth/access_token',
       data: {
         'grant_type': 'refresh_token',
         'client_id': _appId,
@@ -244,13 +245,12 @@ class BangumiAuth {
           'user-agent': Utils.getRandomUA(),
         },
       ),
-      shouldRethrow: true,
     );
     final token = BangumiOauthToken.fromJson(
       Map<String, dynamic>.from(response.data),
     );
     await _saveTokenBundle(token);
-    final user = await BangumiHTTP.getCurrentUser();
+    final user = await BangumiApi.getCurrentUser();
     await saveUser(user);
     return true;
   }
@@ -285,7 +285,7 @@ class BangumiAuth {
     _loginSession = session;
 
     final loginResponse = await session.dio.post(
-      '${Api.bangumiIndex}FollowTheRabbit',
+      '${ApiEndpoints.bangumiIndex}FollowTheRabbit',
       data: {
         'formhash': session.formhash,
         'referer': '',
@@ -357,20 +357,20 @@ class BangumiAuth {
 
   static Future<BangumiAuthUser> _getCurrentUserWithToken(
       String accessToken) async {
-    final res = await Request().get(
-      Api.bangumiAPIDomain + Api.bangumiMyself,
-      options:
-          Options(headers: {'Authorization': 'Bearer ${accessToken.trim()}'}),
-      extra: {'customError': 'Bangumi 登录校验失败'},
-      shouldRethrow: true,
+    final res = await DioFactory.apiDio.get(
+      ApiEndpoints.bangumiAPIDomain + ApiEndpoints.bangumiUsernameByToken,
+      options: Options(
+        headers: {'Authorization': 'Bearer ${accessToken.trim()}'},
+        extra: {'customError': 'Bangumi 登录校验失败'},
+      ),
     );
     return BangumiAuthUser.fromJson(Map<String, dynamic>.from(res.data));
   }
 
   static Future<BangumiOauthToken> _exchangeAuthorizationCode(
       String code) async {
-    final tokenResponse = await Request().post(
-      '${Api.bangumiIndex}oauth/access_token',
+    final tokenResponse = await DioFactory.apiDio.post(
+      '${ApiEndpoints.bangumiIndex}oauth/access_token',
       data: {
         'grant_type': 'authorization_code',
         'client_id': _appId,
@@ -385,7 +385,6 @@ class BangumiAuth {
           'user-agent': Utils.getRandomUA(),
         },
       ),
-      shouldRethrow: true,
     );
     return BangumiOauthToken.fromJson(
       Map<String, dynamic>.from(tokenResponse.data),
@@ -410,7 +409,7 @@ class BangumiAuth {
       return '';
     }
     final inlineCodeMatch =
-        RegExp(r'(?:^|[?&\s])code=([^&\s]+)').firstMatch(trimmed);
+        RegExp(r'(?:^|[?&\\s])code=([^&\\s]+)').firstMatch(trimmed);
     if (inlineCodeMatch != null) {
       return Uri.decodeComponent(inlineCodeMatch.group(1) ?? '').trim();
     }
@@ -420,7 +419,7 @@ class BangumiAuth {
 
   static String _extractInputValue(String html, String name) {
     final document = html_parser.parse(html);
-    final input = document.querySelector('input[name="$name"]');
+    final input = document.querySelector('input[name=\"$name\"]');
     return input?.attributes['value']?.trim() ?? '';
   }
 
@@ -483,7 +482,7 @@ class BangumiAuth {
       ),
     );
     String cookie = '';
-    final loginPage = await dio.get('${Api.bangumiIndex}login');
+    final loginPage = await dio.get('${ApiEndpoints.bangumiIndex}login');
     cookie = _mergeCookie(cookie, loginPage.headers['set-cookie']);
     final loginHtml = (loginPage.data ?? '').toString();
     final loginFormhash = _extractInputValue(loginHtml, 'formhash');
@@ -503,7 +502,7 @@ class BangumiAuth {
     final suffix =
         '${DateTime.now().millisecondsSinceEpoch}${1 + DateTime.now().millisecond % 6}';
     final response = await session.dio.get<List<int>>(
-      '${Api.bangumiIndex}signup/captcha?$suffix',
+      '${ApiEndpoints.bangumiIndex}signup/captcha?$suffix',
       options: Options(
         responseType: ResponseType.bytes,
         headers: {'cookie': session.cookie},
