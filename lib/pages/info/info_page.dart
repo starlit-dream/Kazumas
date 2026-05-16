@@ -37,6 +37,9 @@ class InfoPage extends StatefulWidget {
 }
 
 class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
+  static const Duration _minimumBangumiInfoLoadingDuration =
+      Duration(milliseconds: 600);
+
   /// Don't use modular singleton here. We may have multiple info pages.
   /// Use a new instance of InfoController for each info page.
   final InfoController infoController = InfoController();
@@ -58,8 +61,12 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   bool staffIsLoading = false;
   bool staffQueryTimeout = false;
   bool staffIsEmpty = false;
+  bool _showBangumiInfoSkeleton = false;
 
   final inputBangumiIten = Modular.args.data as BangumiItem;
+
+  bool get _isShowingBangumiInfoSkeleton =>
+      infoController.isLoading || _showBangumiInfoSkeleton;
 
   bool _needsBangumiInfoRefresh(BangumiItem bangumiItem) {
     final votesCount = bangumiItem.votesCount;
@@ -169,7 +176,12 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     // We need the type parameter to determine whether to attach the new data to the old data
     // We can't generally replace the old data with the new data, because the old data contains images url, update them will cause the image to reload and flicker
     if (_needsBangumiInfoRefresh(infoController.bangumiItem)) {
-      queryBangumiInfoByID(infoController.bangumiItem.id, type: 'attach');
+      _showBangumiInfoSkeleton = true;
+      queryBangumiInfoByID(
+        infoController.bangumiItem.id,
+        type: 'attach',
+        enforceMinimumLoadingDuration: true,
+      );
     }
     infoController.syncBangumiCollection().then((_) {
       if (mounted) {
@@ -289,13 +301,35 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     );
   }
 
-  Future<void> queryBangumiInfoByID(int id, {String type = "init"}) async {
+  Future<void> queryBangumiInfoByID(
+    int id, {
+    String type = "init",
+    bool enforceMinimumLoadingDuration = false,
+  }) async {
+    final loadingStartedAt = DateTime.now();
     try {
       await infoController.queryBangumiInfoByID(id, type: type);
-      setState(() {});
     } catch (e) {
       KazumiLogger()
           .e('InfoController: failed to query bangumi info by ID', error: e);
+    } finally {
+      if (enforceMinimumLoadingDuration && mounted) {
+        await _waitForMinimumBangumiInfoLoadingDuration(loadingStartedAt);
+      }
+      if (mounted) {
+        setState(() {
+          _showBangumiInfoSkeleton = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _waitForMinimumBangumiInfoLoadingDuration(
+      DateTime loadingStartedAt) async {
+    final elapsed = DateTime.now().difference(loadingStartedAt);
+    final remaining = _minimumBangumiInfoLoadingDuration - elapsed;
+    if (remaining > Duration.zero) {
+      await Future.delayed(remaining);
     }
   }
 
@@ -472,47 +506,19 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                     flexibleSpace: FlexibleSpaceBar(
                       collapseMode: CollapseMode.pin,
                       background: Observer(builder: (context) {
+                        final showBangumiInfoSkeleton =
+                            _isShowingBangumiInfoSkeleton;
                         return Stack(
                           children: [
                             // No background image when loading to make loading looks better
-                            if (!infoController.isLoading)
+                            if (!showBangumiInfoSkeleton)
                               Positioned.fill(
                                 bottom: kTextTabBarHeight,
                                 child: IgnorePointer(
-                                  child: Opacity(
-                                    opacity: 0.4,
-                                    child: LayoutBuilder(
-                                      builder: (context, boxConstraints) {
-                                        return ImageFiltered(
-                                          imageFilter: ImageFilter.blur(
-                                              sigmaX: 15.0, sigmaY: 15.0),
-                                          child: ShaderMask(
-                                            shaderCallback: (Rect bounds) {
-                                              return const LinearGradient(
-                                                begin: Alignment.topCenter,
-                                                end: Alignment.bottomCenter,
-                                                colors: [
-                                                  Colors.white,
-                                                  Colors.transparent,
-                                                ],
-                                                stops: [0.8, 1],
-                                              ).createShader(bounds);
-                                            },
-                                            child: NetworkImgLayer(
-                                              src: infoController.bangumiItem
-                                                      .images['large'] ??
-                                                  '',
-                                              width: boxConstraints.maxWidth,
-                                              height: boxConstraints.maxHeight,
-                                              fadeInDuration: const Duration(
-                                                  milliseconds: 0),
-                                              fadeOutDuration: const Duration(
-                                                  milliseconds: 0),
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
+                                  child: _InfoHeaderBackground(
+                                    imageUrl: infoController
+                                            .bangumiItem.images['large'] ??
+                                        '',
                                   ),
                                 ),
                               ),
@@ -531,7 +537,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                           return BangumiInfoCardV(
                                             bangumiItem:
                                                 infoController.bangumiItem,
-                                            isLoading: infoController.isLoading,
+                                            isLoading:
+                                                showBangumiInfoSkeleton,
                                             showRating: showRating,
                                             userRating:
                                                 infoController.userRating,
@@ -544,7 +551,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                         }),
                                         // 进度条（仅登录态显示）
                                         if (BangumiAuth.isLoggedIn &&
-                                            !infoController.isLoading)
+                                            !showBangumiInfoSkeleton)
                                           Observer(builder: (context) {
                                             final total = infoController
                                                         .episodeProgressTotal >
@@ -677,7 +684,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                           }),
                                         // 我的评价（仅登录态显示）
                                         if (BangumiAuth.isLoggedIn &&
-                                            !infoController.isLoading)
+                                            !showBangumiInfoSkeleton)
                                           Observer(builder: (context) {
                                             final hasRating =
                                                 (infoController.userRating ??
@@ -854,6 +861,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
               ];
             },
             body: Observer(builder: (context) {
+              final showBangumiInfoSkeleton = _isShowingBangumiInfoSkeleton;
               return InfoTabView(
                 tabController: infoTabController,
                 bangumiItem: infoController.bangumiItem,
@@ -869,7 +877,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                 commentsList: infoController.commentsList,
                 characterList: infoController.characterList,
                 staffList: infoController.staffList,
-                isLoading: infoController.isLoading,
+                isLoading: showBangumiInfoSkeleton,
                 relatedSubjectList: infoController.relatedSubjectList,
                 relatedSubjectsLoading: infoController.relatedSubjectsLoading,
               );
@@ -891,6 +899,113 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _InfoHeaderBackground extends StatelessWidget {
+  const _InfoHeaderBackground({
+    required this.imageUrl,
+  });
+
+  static const double _downsample = 0.5;
+  static const double _blurSigma = 15.0;
+  static const double _opacity = 0.4;
+  static const double _edgeBleed = 32.0;
+  static const double _bottomFeatherHeight = 48.0;
+
+  final String imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    if (imageUrl.isEmpty) {
+      return const SizedBox.shrink();
+    }
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth;
+        final height = constraints.maxHeight;
+        if (width <= 0 || height <= 0) {
+          return const SizedBox.shrink();
+        }
+
+        final rasterWidth = width * _downsample;
+        final rasterHeight = (height + _edgeBleed) * _downsample;
+
+        final backgroundColor = Theme.of(context).scaffoldBackgroundColor;
+
+        return ClipRect(
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              ShaderMask(
+                shaderCallback: (bounds) {
+                  return const LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [
+                      Colors.white,
+                      Colors.transparent,
+                    ],
+                    stops: [0.8, 1],
+                  ).createShader(bounds);
+                },
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: RepaintBoundary(
+                    child: Transform.scale(
+                      scale: 1 / _downsample,
+                      alignment: Alignment.topCenter,
+                      filterQuality: FilterQuality.low,
+                      child: SizedBox(
+                        width: rasterWidth,
+                        height: rasterHeight,
+                        child: ImageFiltered(
+                          imageFilter: ImageFilter.blur(
+                            sigmaX: _blurSigma * _downsample,
+                            sigmaY: _blurSigma * _downsample,
+                          ),
+                          child: NetworkImgLayer(
+                            src: imageUrl,
+                            width: rasterWidth,
+                            height: rasterHeight,
+                            fadeInDuration: Duration.zero,
+                            fadeOutDuration: Duration.zero,
+                            filterQuality: FilterQuality.low,
+                            color: Colors.white.withValues(alpha: _opacity),
+                            colorBlendMode: BlendMode.modulate,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                bottom: 0,
+                height: _bottomFeatherHeight,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        backgroundColor.withValues(alpha: 0),
+                        backgroundColor.withValues(alpha: 0.55),
+                        backgroundColor,
+                      ],
+                      stops: const [0, 0.72, 1],
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
