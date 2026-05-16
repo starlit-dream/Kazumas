@@ -15,12 +15,12 @@ import 'package:url_launcher/url_launcher.dart';
 
 /// 安装类型枚举
 enum InstallationType {
-  windowsMsix, // Kazumi_windows_1.7.5.msix
-  windowsPortable, // Kazumi_windows_1.7.5.zip
-  linuxDeb, // Kazumi_linux_1.7.5_amd64.deb
-  linuxTar, // Kazumi_linux_1.7.5_amd64.tar.gz
-  macosDmg, // Kazumi_macos_1.7.5.dmg
-  androidApk, // Kazumi_android_1.7.5.apk
+  windowsMsix, // Kazumas_windows_1.7.5.msix
+  windowsPortable, // Kazumas_windows_1.7.5.zip
+  linuxDeb, // Kazumas_linux_1.7.5_amd64.deb
+  linuxTar, // Kazumas_linux_1.7.5_amd64.tar.gz
+  macosDmg, // Kazumas_macos_1.7.5.dmg
+  androidApk, // Kazumas_android_1.7.5.apk
   ios, // iOS App
   unknown,
 }
@@ -796,7 +796,7 @@ class AutoUpdater {
     } else if (Platform.isAndroid) {
       extension = '.apk';
     }
-    return 'Kazumi-$version$extension';
+    return 'Kazumas-$version$extension';
   }
 
   /// 从 assets 中获取文件的哈希值

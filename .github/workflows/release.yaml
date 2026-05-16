@@ -216,7 +216,7 @@ jobs:
         continue-on-error: true
         with:
           name: windows_msix_outputs
-          path: build/windows/x64/runner/Release/kazumi.msix
+          path: build/windows/x64/runner/Release/Kazumas.msix
 
       # Sign MSIX
       - run: New-Item -Path "build/windows/msix_signed_output" -ItemType Directory
@@ -423,7 +423,7 @@ jobs:
           VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
           npm install --global create-dmg 2>/dev/null || true
           # Try create-dmg first
-          create-dmg build/macos/Build/Products/Release/Kazumi.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
+          create-dmg build/macos/Build/Products/Release/Kazumas.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
           create-dmg build/macos/Build/Products/Release/Runner.app --dmg-title="Kazumas ${VERSION}" 2>/dev/null || \
           echo "DMG creation failed, will use .app bundle instead"
       - name: Rename DMG or fallback to .app
@@ -431,12 +431,12 @@ jobs:
           VERSION="${{ needs.resolve-versions.outputs.branch_version }}"
           if ls Kazumas*.dmg 1>/dev/null 2>&1; then
             mv Kazumas*.dmg "Kazumas_macos_${VERSION}.dmg"
-          elif ls Kazumi*.dmg 1>/dev/null 2>&1; then
-            mv Kazumi*.dmg "Kazumas_macos_${VERSION}.dmg"
+          elif ls Kazumas*.dmg 1>/dev/null 2>&1; then
+            mv Kazumas*.dmg "Kazumas_macos_${VERSION}.dmg"
           else
             echo "No DMG found, creating zip from .app bundle"
             ditto -c -k --sequesterRsrc --keepParent \
-              build/macos/Build/Products/Release/Kazumi.app \
+              build/macos/Build/Products/Release/Kazumas.app \
               "Kazumas_macos_${VERSION}.zip" 2>/dev/null || \
             ditto -c -k --sequesterRsrc --keepParent \
               build/macos/Build/Products/Release/Runner.app \
