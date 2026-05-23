@@ -1986,8 +1986,8 @@ class _PlayerItemState extends State<PlayerItem>
                                 showSyncPlayEndPointSwitchDialog,
                             showDanmakuDestinationPickerAndSend:
                                 widget.showDanmakuDestinationPickerAndSend,
+                            handleScreenShot: handleScreenshot,
                             pauseForTimedShutdown: widget.pauseForTimedShutdown,
-                            changeEpisode: widget.changeEpisode,
                             disableAnimations: widget.disableAnimations,
                             skipOP: skipOP,
                           )
@@ -2013,6 +2013,7 @@ class _PlayerItemState extends State<PlayerItem>
                             showSyncPlayEndPointSwitchDialog:
                                 showSyncPlayEndPointSwitchDialog,
                             pauseForTimedShutdown: widget.pauseForTimedShutdown,
+                            changeEpisode: widget.changeEpisode,
                             disableAnimations: widget.disableAnimations,
                             skipOP: skipOP,
                           ),
