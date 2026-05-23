@@ -120,9 +120,12 @@ class _PlayerItemState extends State<PlayerItem>
   late bool brightnessVolumeGesture;
   bool _episodeWatchedReported = false;
   bool _episodeStateSyncing = false;
+  int _lastEpisodeNumber = 0;
+  int _currentEpisodeIdentity = 0;
   bool _watchedPopupEnabled = true;
   bool _watchedAutoRecord = false;
   double _watchedAutoRecordThreshold = 0.9;
+  bool _watchedVerificationPending = false;
   // 胶囊弹窗由 _markEpisodeWatched() 在标记成功后自动弹出
 
   Timer? hideTimer;
@@ -313,13 +316,25 @@ class _PlayerItemState extends State<PlayerItem>
     }
   }
 
-  Future<void> _markEpisodeWatched() async {
+  void _restoreWatchedRetryState(int attemptEpisodeIdentity) {
+    if (_currentEpisodeIdentity != attemptEpisodeIdentity) {
+      return;
+    }
+    _episodeWatchedReported = false;
+    _watchedVerificationPending = false;
+  }
+
+  Future<void> _markEpisodeWatched(
+    int attemptEpisodeIdentity,
+    int episodeNumber,
+  ) async {
     try {
       final episodeInfo = await BangumiHTTP.getBangumiEpisodeByID(
         videoPageController.bangumiItem.id,
-        videoPageController.actualEpisodeNumber,
+        episodeNumber,
       );
       if (episodeInfo.id == 0) {
+        _restoreWatchedRetryState(attemptEpisodeIdentity);
         return;
       }
       await collectController.markEpisodeWatchedIfNeeded(
@@ -327,17 +342,51 @@ class _PlayerItemState extends State<PlayerItem>
         subjectId: videoPageController.bangumiItem.id,
         episodeId: episodeInfo.id,
       );
+      // 发送完标记后再发请求验证标记已生效
+      _watchedVerificationPending = true;
+      try {
+        final verifiedType = await BangumiHTTP.getEpisodeCollectionType(
+          episodeInfo.id,
+        );
+        if (_currentEpisodeIdentity != attemptEpisodeIdentity) {
+          return;
+        }
+        if (verifiedType == 2) {
+          _watchedVerificationPending = false;
+          KazumiLogger().i(
+            'Bangumi: episode $episodeNumber '
+            'marked as watched (verified type=$verifiedType)',
+          );
+        } else {
+          _restoreWatchedRetryState(attemptEpisodeIdentity);
+          KazumiLogger().w(
+            'Bangumi: episode mark verification returned type=$verifiedType '
+            '(expected 2), mark may not have taken effect',
+          );
+          return;
+        }
+      } catch (e) {
+        _restoreWatchedRetryState(attemptEpisodeIdentity);
+        KazumiLogger().w(
+          'Bangumi: failed to verify episode mark',
+          error: e,
+        );
+        return;
+      }
+      if (_currentEpisodeIdentity != attemptEpisodeIdentity) {
+        return;
+      }
       // 标记成功后弹出胶囊确认窗口
       if (mounted && _watchedPopupEnabled) {
         showCapsuleWatchedConfirmation(
           context,
-          episodeNumber: videoPageController.actualEpisodeNumber,
+          episodeNumber: episodeNumber,
           infoController: null,
         );
       }
       _maybePromptFinishReview();
     } catch (e) {
-      _episodeWatchedReported = false;
+      _restoreWatchedRetryState(attemptEpisodeIdentity);
       KazumiLogger().w('Bangumi: failed to sync watched episode', error: e);
     }
   }
@@ -403,6 +452,28 @@ class _PlayerItemState extends State<PlayerItem>
       }
     }
     return false;
+  }
+
+  bool _isTvActivateKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.select ||
+        key == LogicalKeyboardKey.enter ||
+        key == LogicalKeyboardKey.numpadEnter;
+  }
+
+  bool _isTvBackKey(LogicalKeyboardKey key) {
+    return key == LogicalKeyboardKey.goBack || key == LogicalKeyboardKey.escape;
+  }
+
+  bool _handleTvSurfaceActivate() {
+    if (playerController.showVideoController) {
+      return false;
+    }
+    displayVideoController();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      FocusScope.of(context).nextFocus();
+    });
+    return true;
   }
 
   //上一集下一集动作
@@ -1010,22 +1081,36 @@ class _PlayerItemState extends State<PlayerItem>
             videoPageController.roadList[videoPageController.currentRoad]
                 .identifier[videoPageController.currentEpisode - 1]);
       }
-      final totalSeconds = playerController.duration.inSeconds;
-      final watchedSeconds = playerController.currentPosition.inSeconds;
-      final currentCollectType =
-          collectController.getCollectType(videoPageController.bangumiItem);
-      if (!_episodeWatchedReported &&
-          BangumiAuth.isLoggedIn &&
+      // 检测剧集切换，重置标记状态
+      final int currentEpisodeNum = videoPageController.actualEpisodeNumber;
+      if (currentEpisodeNum != _lastEpisodeNumber) {
+        _lastEpisodeNumber = currentEpisodeNum;
+        _currentEpisodeIdentity++;
+        _episodeWatchedReported = false;
+        _watchedVerificationPending = false;
+      }
+      // 自动标记观看进度
+      if (_watchedAutoRecord &&
+          !_episodeWatchedReported &&
+          !_watchedVerificationPending &&
+          !_episodeStateSyncing &&
+          playerController.playerPlaying &&
+          !videoPageController.loading &&
           !videoPageController.isOfflineMode &&
-          currentCollectType == 1 &&
-          totalSeconds > 0 &&
-          watchedSeconds / totalSeconds >= _watchedAutoRecordThreshold) {
-        _episodeWatchedReported = true;
-        // 自动记录模式：静默发送已看过请求
-        if (_watchedAutoRecord) {
-          unawaited(_markEpisodeWatched());
+          BangumiAuth.isLoggedIn &&
+          playerController.duration.inMilliseconds > 0) {
+        final double progress =
+            playerController.currentPosition.inMilliseconds /
+                playerController.duration.inMilliseconds;
+        if (progress >= _watchedAutoRecordThreshold) {
+          final int attemptEpisodeIdentity = _currentEpisodeIdentity;
+          _episodeWatchedReported = true;
+          _watchedVerificationPending = true;
+          _markEpisodeWatched(
+            attemptEpisodeIdentity,
+            currentEpisodeNum,
+          );
         }
-        // 胶囊弹窗由 _markEpisodeWatched() 在标记成功后自动弹出
       }
       // 自动播放下一集
       if (playerController.completed &&
@@ -1377,7 +1462,7 @@ class _PlayerItemState extends State<PlayerItem>
                       border: OutlineInputBorder(),
                     ),
                     isExpanded: true,
-                    value: selectedSyncPlayEndPoint,
+                    initialValue: selectedSyncPlayEndPoint,
                     items: syncPlayEndPoints.map((String value) {
                       return DropdownMenuItem<String>(
                         value: value,
@@ -1670,6 +1755,12 @@ class _PlayerItemState extends State<PlayerItem>
         setting.get(SettingBoxKey.backgroundPlayback, defaultValue: false);
     brightnessVolumeGesture =
         setting.get(SettingBoxKey.brightnessVolumeGesture, defaultValue: true);
+    _watchedPopupEnabled =
+        setting.get(SettingBoxKey.watchedPopupEnabled, defaultValue: true);
+    _watchedAutoRecord =
+        setting.get(SettingBoxKey.watchedAutoRecord, defaultValue: false);
+    _watchedAutoRecordThreshold = setting
+        .get(SettingBoxKey.watchedAutoRecordThreshold, defaultValue: 0.9);
     unawaited(_bindAudioService());
     playerTimer = getPlayerTimer();
     windowManager.addListener(this);
@@ -1764,14 +1855,24 @@ class _PlayerItemState extends State<PlayerItem>
                             // I don't know why, but the focus node will break popscope.
                             focusNode: widget.keyboardFocus,
                             autofocus: true,
+                            canRequestFocus: MediaQuery.sizeOf(context).width <=
+                                    MediaQuery.sizeOf(context).height ||
+                                !videoPageController.showTabBody,
                             onKeyEvent: (focusNode, KeyEvent event) {
                               bool handled = false;
-                              final keyLabel =
-                                  event.logicalKey.keyLabel.isNotEmpty
-                                      ? event.logicalKey.keyLabel
-                                      : event.logicalKey.debugName ?? '';
+                              final logicalKey = event.logicalKey;
+                              final keyLabel = logicalKey.keyLabel.isNotEmpty
+                                  ? logicalKey.keyLabel
+                                  : logicalKey.debugName ?? '';
                               if (event is KeyDownEvent) {
                                 handled = handleShortcutDown(keyLabel);
+                                if (!handled && _isTvActivateKey(logicalKey)) {
+                                  handled = _handleTvSurfaceActivate();
+                                }
+                                if (!handled && _isTvBackKey(logicalKey)) {
+                                  widget.onBackPressed(context);
+                                  handled = true;
+                                }
                               } else if (event is KeyRepeatEvent) {
                                 handled =
                                     handleShortcutLongPress(keyLabel, "Repeat");
@@ -1890,9 +1991,9 @@ class _PlayerItemState extends State<PlayerItem>
                                 showSyncPlayEndPointSwitchDialog,
                             showDanmakuDestinationPickerAndSend:
                                 widget.showDanmakuDestinationPickerAndSend,
+                            handleScreenShot: handleScreenshot,
                             pauseForTimedShutdown: widget.pauseForTimedShutdown,
                             disableAnimations: widget.disableAnimations,
-                            handleScreenShot: handleScreenshot,
                             skipOP: skipOP,
                           )
                         : SmallestPlayerItemPanel(
@@ -1917,6 +2018,7 @@ class _PlayerItemState extends State<PlayerItem>
                             showSyncPlayEndPointSwitchDialog:
                                 showSyncPlayEndPointSwitchDialog,
                             pauseForTimedShutdown: widget.pauseForTimedShutdown,
+                            changeEpisode: widget.changeEpisode,
                             disableAnimations: widget.disableAnimations,
                             skipOP: skipOP,
                           ),

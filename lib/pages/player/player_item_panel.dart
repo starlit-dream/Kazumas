@@ -727,6 +727,7 @@ class _PlayerItemPanelState extends State<PlayerItemPanel> {
                 child: Row(
                   children: [
                     IconButton(
+                      autofocus: playerController.showVideoController,
                       color: Colors.white,
                       icon: Icon(playerController.playing
                           ? Icons.pause_rounded
@@ -1025,6 +1026,76 @@ class _PlayerItemPanelState extends State<PlayerItemPanel> {
                           ),
                       ],
                     ),
+                    // 切换源
+                    if (videoPageController.roadList.length > 1)
+                      MenuAnchor(
+                        consumeOutsideTap: true,
+                        onOpen: () {
+                          widget.cancelHideTimer();
+                          playerController.canHidePlayerPanel = false;
+                        },
+                        onClose: () {
+                          widget.cancelHideTimer();
+                          widget.startHideTimer();
+                          playerController.canHidePlayerPanel = true;
+                        },
+                        builder: (
+                          BuildContext context,
+                          MenuController controller,
+                          Widget? child,
+                        ) {
+                          return TextButton(
+                            onPressed: () {
+                              if (controller.isOpen) {
+                                controller.close();
+                              } else {
+                                controller.open();
+                              }
+                            },
+                            child: Text(
+                              videoPageController
+                                  .roadList[videoPageController.currentRoad]
+                                  .name,
+                              style: const TextStyle(color: Colors.white),
+                            ),
+                          );
+                        },
+                        menuChildren: [
+                          for (int i = 0;
+                              i < videoPageController.roadList.length;
+                              i++)
+                            MenuItemButton(
+                              onPressed: () {
+                                if (i != videoPageController.currentRoad) {
+                                  widget.cancelHideTimer();
+                                  widget.changeEpisode(
+                                    videoPageController.currentEpisode,
+                                    currentRoad: i,
+                                  );
+                                }
+                              },
+                              child: Container(
+                                height: 48,
+                                constraints:
+                                    const BoxConstraints(minWidth: 112),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    videoPageController.roadList[i].name,
+                                    style: TextStyle(
+                                      color:
+                                          i == videoPageController.currentRoad
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .primary
+                                              : null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
                     (!videoPageController.isFullscreen &&
                             !Utils.isTablet() &&
                             !Utils.isDesktop())
@@ -1260,6 +1331,51 @@ class _PlayerItemPanelState extends State<PlayerItemPanel> {
                         ),
                       ),
                     ),
+                    // 切换源
+                    if (videoPageController.roadList.length > 1)
+                      SubmenuButton(
+                        menuChildren: [
+                          for (int i = 0;
+                              i < videoPageController.roadList.length;
+                              i++)
+                            MenuItemButton(
+                              onPressed: () {
+                                if (i != videoPageController.currentRoad) {
+                                  widget.changeEpisode(
+                                    videoPageController.currentEpisode,
+                                    currentRoad: i,
+                                  );
+                                }
+                              },
+                              child: Container(
+                                height: 48,
+                                constraints: BoxConstraints(minWidth: 112),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    videoPageController.roadList[i].name,
+                                    style: TextStyle(
+                                      color:
+                                          i == videoPageController.currentRoad
+                                              ? Theme.of(context)
+                                                  .colorScheme
+                                                  .primary
+                                              : null,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                        ],
+                        child: Container(
+                          height: 48,
+                          constraints: BoxConstraints(minWidth: 112),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text("切换源"),
+                          ),
+                        ),
+                      ),
                     // 定时关闭
                     SubmenuButton(
                       menuChildren: [
