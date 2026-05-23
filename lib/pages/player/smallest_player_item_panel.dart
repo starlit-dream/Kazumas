@@ -41,6 +41,7 @@ class SmallestPlayerItemPanel extends StatefulWidget {
     required this.showSyncPlayRoomCreateDialog,
     required this.showSyncPlayEndPointSwitchDialog,
     required this.pauseForTimedShutdown,
+    required this.changeEpisode,
     this.disableAnimations = false,
   });
 
@@ -62,6 +63,8 @@ class SmallestPlayerItemPanel extends StatefulWidget {
   final void Function() showSyncPlayRoomCreateDialog;
   final void Function() showSyncPlayEndPointSwitchDialog;
   final VoidCallback pauseForTimedShutdown;
+  final Future<void> Function(int episode, {int currentRoad, int offset})
+      changeEpisode;
   final bool disableAnimations;
 
   @override
@@ -488,6 +491,7 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
       return Row(
         children: [
           IconButton(
+            autofocus: playerController.showVideoController,
             color: Colors.white,
             icon: Icon(playerController.playing
                 ? Icons.pause_rounded
@@ -551,6 +555,7 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
         child: Row(
           children: [
             IconButton(
+              autofocus: playerController.showVideoController,
               color: Colors.white,
               icon: const Icon(Icons.arrow_back_rounded),
               tooltip: '返回',
@@ -754,6 +759,47 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
                     ),
                   ),
                 ),
+                if (videoPageController.roadList.length > 1)
+                  SubmenuButton(
+                    menuChildren: [
+                      for (int i = 0;
+                          i < videoPageController.roadList.length;
+                          i++)
+                        MenuItemButton(
+                          onPressed: () {
+                            if (i != videoPageController.currentRoad) {
+                              widget.changeEpisode(
+                                videoPageController.currentEpisode,
+                                currentRoad: i,
+                              );
+                            }
+                          },
+                          child: Container(
+                            height: 48,
+                            constraints: BoxConstraints(minWidth: 112),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                videoPageController.roadList[i].name,
+                                style: TextStyle(
+                                  color: i == videoPageController.currentRoad
+                                      ? Theme.of(context).colorScheme.primary
+                                      : null,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                    ],
+                    child: Container(
+                      height: 48,
+                      constraints: BoxConstraints(minWidth: 112),
+                      child: Align(
+                        alignment: Alignment.centerLeft,
+                        child: Text("切换源"),
+                      ),
+                    ),
+                  ),
                 SubmenuButton(
                   menuChildren: [
                     MenuItemButton(
