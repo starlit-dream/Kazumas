@@ -381,7 +381,7 @@ class _PlayerItemState extends State<PlayerItem>
         showCapsuleWatchedConfirmation(
           context,
           episodeNumber: episodeNumber,
-          episodeTitle: _currentEpisodeTitle,
+          episodeTitle: _watchedPopupEpisodeTitle(episodeInfo),
           infoController: null,
         );
       }
@@ -424,11 +424,9 @@ class _PlayerItemState extends State<PlayerItem>
     });
   }
 
-  String get _currentEpisodeTitle {
+  String _watchedPopupEpisodeTitle(EpisodeInfo episodeInfo) {
     final bangumiEpisodeTitle =
-        videoPageController.episodeInfo.nameCn.isNotEmpty
-            ? videoPageController.episodeInfo.nameCn
-            : videoPageController.episodeInfo.name;
+        episodeInfo.nameCn.isNotEmpty ? episodeInfo.nameCn : episodeInfo.name;
     if (bangumiEpisodeTitle.isNotEmpty) {
       return bangumiEpisodeTitle;
     }
