@@ -381,6 +381,7 @@ class _PlayerItemState extends State<PlayerItem>
         showCapsuleWatchedConfirmation(
           context,
           episodeNumber: episodeNumber,
+          episodeTitle: _currentEpisodeTitle,
           infoController: null,
         );
       }
@@ -421,6 +422,21 @@ class _PlayerItemState extends State<PlayerItem>
         autoTriggered: true,
       );
     });
+  }
+
+  String get _currentEpisodeTitle {
+    final currentRoadIndex = videoPageController.currentRoad;
+    final currentEpisodeIndex = videoPageController.currentEpisode - 1;
+    if (currentRoadIndex < 0 ||
+        currentRoadIndex >= videoPageController.roadList.length) {
+      return '';
+    }
+    final identifiers =
+        videoPageController.roadList[currentRoadIndex].identifier;
+    if (currentEpisodeIndex < 0 || currentEpisodeIndex >= identifiers.length) {
+      return '';
+    }
+    return identifiers[currentEpisodeIndex];
   }
 
   //快捷键按下

@@ -424,6 +424,19 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     final List<String> tabs = <String>['概览', '吐槽', '角色', '评论', '制作人员'];
     final bool showWindowButton = GStorage.setting
         .get(SettingBoxKey.showWindowButton, defaultValue: false);
+    final double macWindowButtonHeight =
+        Platform.isMacOS && showWindowButton ? 22 : 0;
+    final double userActionCardsHeight =
+        BangumiAuth.isLoggedIn && !_isShowingBangumiInfoSkeleton ? 176 : 0;
+    final double expandedHeaderHeight = 360 +
+        userActionCardsHeight +
+        kTextTabBarHeight +
+        kToolbarHeight +
+        macWindowButtonHeight;
+    final double collapsedHeaderHeight = kTextTabBarHeight +
+        kToolbarHeight +
+        MediaQuery.paddingOf(context).top +
+        macWindowButtonHeight;
     return PopScope(
       canPop: true,
       child: DefaultTabController(
@@ -487,22 +500,11 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                         CloseButton(onPressed: () => windowManager.close()),
                       SizedBox(width: 8),
                     ],
-                    toolbarHeight: (Platform.isMacOS && showWindowButton)
-                        ? kToolbarHeight + 22
-                        : kToolbarHeight,
+                    toolbarHeight: kToolbarHeight + macWindowButtonHeight,
                     stretch: true,
                     centerTitle: false,
-                    expandedHeight: (Platform.isMacOS && showWindowButton)
-                        ? 360 + kTextTabBarHeight + kToolbarHeight + 22
-                        : 360 + kTextTabBarHeight + kToolbarHeight,
-                    collapsedHeight: (Platform.isMacOS && showWindowButton)
-                        ? kTextTabBarHeight +
-                            kToolbarHeight +
-                            MediaQuery.paddingOf(context).top +
-                            22
-                        : kTextTabBarHeight +
-                            kToolbarHeight +
-                            MediaQuery.paddingOf(context).top,
+                    expandedHeight: expandedHeaderHeight,
+                    collapsedHeight: collapsedHeaderHeight,
                     flexibleSpace: FlexibleSpaceBar(
                       collapseMode: CollapseMode.pin,
                       background: Observer(builder: (context) {
@@ -537,8 +539,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                           return BangumiInfoCardV(
                                             bangumiItem:
                                                 infoController.bangumiItem,
-                                            isLoading:
-                                                showBangumiInfoSkeleton,
+                                            isLoading: showBangumiInfoSkeleton,
                                             showRating: showRating,
                                             userRating:
                                                 infoController.userRating,

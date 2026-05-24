@@ -1,14 +1,15 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/pages/info/info_controller.dart';
 
 /// 播放器内弹出的胶囊样式已看确认弹窗（左下侧），3 秒后自动消失且可拖动消除
 void showCapsuleWatchedConfirmation(
-    BuildContext context, {
-      required int episodeNumber,
-      required InfoController? infoController,
-    }) {
+  BuildContext context, {
+  required int episodeNumber,
+  required String episodeTitle,
+  required InfoController? infoController,
+}) {
   showDialog(
     context: context,
     barrierDismissible: true,
@@ -29,7 +30,10 @@ void showCapsuleWatchedConfirmation(
               autoTimer.cancel();
               if (ctx.mounted) Navigator.of(ctx).pop();
             },
-            child: _CapsuleWatchedBody(episodeNumber: episodeNumber),
+            child: _CapsuleWatchedBody(
+              episodeNumber: episodeNumber,
+              episodeTitle: episodeTitle,
+            ),
           ),
         ),
       );
@@ -38,14 +42,48 @@ void showCapsuleWatchedConfirmation(
 }
 
 /// 播放器已看确认胶囊弹窗主体
-class _CapsuleWatchedBody extends StatelessWidget {
+class _CapsuleWatchedBody extends StatefulWidget {
   final int episodeNumber;
+  final String episodeTitle;
 
-  const _CapsuleWatchedBody({required this.episodeNumber});
+  const _CapsuleWatchedBody({
+    required this.episodeNumber,
+    required this.episodeTitle,
+  });
+
+  @override
+  State<_CapsuleWatchedBody> createState() => _CapsuleWatchedBodyState();
+}
+
+class _CapsuleWatchedBodyState extends State<_CapsuleWatchedBody> {
+  bool _completed = false;
+  Timer? _flipTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _flipTimer = Timer(const Duration(milliseconds: 1100), () {
+      if (!mounted) return;
+      setState(() {
+        _completed = true;
+      });
+    });
+  }
+
+  @override
+  void dispose() {
+    _flipTimer?.cancel();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final episodeLabel = widget.episodeNumber.toString().padLeft(2, '0');
+    final normalizedTitle = widget.episodeTitle.trim();
+    final initialText = normalizedTitle.isEmpty
+        ? episodeLabel
+        : '$episodeLabel $normalizedTitle';
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 300),
@@ -67,15 +105,53 @@ class _CapsuleWatchedBody extends StatelessWidget {
           Icon(Icons.check_circle_rounded, size: 18, color: cs.primary),
           const SizedBox(width: 8),
           Flexible(
-            child: Text(
-              '已标记第 $episodeNumber 集为已看',
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w500,
-                color: cs.onSurface,
+            child: TweenAnimationBuilder<double>(
+              tween: Tween<double>(
+                begin: 0,
+                end: _completed ? 1 : 0,
               ),
+              duration: const Duration(milliseconds: 450),
+              curve: Curves.easeInOutCubic,
+              builder: (context, value, child) {
+                final showCompleted = value >= 0.5;
+                final rotation = showCompleted ? value - 1 : value;
+                return Transform(
+                  transform: Matrix4.identity()
+                    ..setEntry(3, 2, 0.001)
+                    ..rotateX(rotation * math.pi),
+                  alignment: Alignment.center,
+                  child: Text(
+                    showCompleted ? '已完成' : initialText,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: cs.onSurface,
+                    ),
+                  ),
+                );
+              },
             ),
           ),
+          if (_completed) ...[
+            const SizedBox(width: 8),
+            Icon(
+              Icons.done_rounded,
+              size: 18,
+              color: cs.primary,
+            ),
+          ] else ...[
+            const SizedBox(width: 8),
+            SizedBox(
+              width: 18,
+              height: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: cs.primary,
+              ),
+            ),
+          ],
         ],
       ),
     );
