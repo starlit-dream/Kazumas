@@ -425,6 +425,14 @@ class _PlayerItemState extends State<PlayerItem>
   }
 
   String get _currentEpisodeTitle {
+    final bangumiEpisodeTitle =
+        videoPageController.episodeInfo.nameCn.isNotEmpty
+            ? videoPageController.episodeInfo.nameCn
+            : videoPageController.episodeInfo.name;
+    if (bangumiEpisodeTitle.isNotEmpty) {
+      return bangumiEpisodeTitle;
+    }
+
     final currentRoadIndex = videoPageController.currentRoad;
     final currentEpisodeIndex = videoPageController.currentEpisode - 1;
     if (currentRoadIndex < 0 ||

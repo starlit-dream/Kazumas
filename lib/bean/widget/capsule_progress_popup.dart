@@ -30,7 +30,7 @@ void showCapsuleWatchedConfirmation(
               autoTimer.cancel();
               if (ctx.mounted) Navigator.of(ctx).pop();
             },
-            child: _CapsuleWatchedBody(
+            child: CapsuleWatchedBody(
               episodeNumber: episodeNumber,
               episodeTitle: episodeTitle,
             ),
@@ -42,20 +42,33 @@ void showCapsuleWatchedConfirmation(
 }
 
 /// 播放器已看确认胶囊弹窗主体
-class _CapsuleWatchedBody extends StatefulWidget {
+class CapsuleWatchedBody extends StatefulWidget {
   final int episodeNumber;
   final String episodeTitle;
 
-  const _CapsuleWatchedBody({
+  const CapsuleWatchedBody({
+    super.key,
     required this.episodeNumber,
     required this.episodeTitle,
   });
 
+  @visibleForTesting
+  static String initialTextFor({
+    required int episodeNumber,
+    required String episodeTitle,
+  }) {
+    final episodeLabel = episodeNumber.toString().padLeft(2, '0');
+    final normalizedTitle = episodeTitle.trim();
+    return normalizedTitle.isEmpty
+        ? episodeLabel
+        : '$episodeLabel $normalizedTitle';
+  }
+
   @override
-  State<_CapsuleWatchedBody> createState() => _CapsuleWatchedBodyState();
+  State<CapsuleWatchedBody> createState() => _CapsuleWatchedBodyState();
 }
 
-class _CapsuleWatchedBodyState extends State<_CapsuleWatchedBody> {
+class _CapsuleWatchedBodyState extends State<CapsuleWatchedBody> {
   bool _completed = false;
   Timer? _flipTimer;
 
@@ -79,11 +92,10 @@ class _CapsuleWatchedBodyState extends State<_CapsuleWatchedBody> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    final episodeLabel = widget.episodeNumber.toString().padLeft(2, '0');
-    final normalizedTitle = widget.episodeTitle.trim();
-    final initialText = normalizedTitle.isEmpty
-        ? episodeLabel
-        : '$episodeLabel $normalizedTitle';
+    final initialText = CapsuleWatchedBody.initialTextFor(
+      episodeNumber: widget.episodeNumber,
+      episodeTitle: widget.episodeTitle,
+    );
 
     return Container(
       constraints: const BoxConstraints(maxWidth: 300),

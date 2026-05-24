@@ -426,13 +426,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
         .get(SettingBoxKey.showWindowButton, defaultValue: false);
     final double macWindowButtonHeight =
         Platform.isMacOS && showWindowButton ? 22 : 0;
-    final double userActionCardsHeight =
-        BangumiAuth.isLoggedIn && !_isShowingBangumiInfoSkeleton ? 176 : 0;
-    final double expandedHeaderHeight = 360 +
-        userActionCardsHeight +
-        kTextTabBarHeight +
-        kToolbarHeight +
-        macWindowButtonHeight;
+    final double expandedHeaderHeight =
+        360 + kToolbarHeight + macWindowButtonHeight;
     final double collapsedHeaderHeight = kTextTabBarHeight +
         kToolbarHeight +
         MediaQuery.paddingOf(context).top +
@@ -550,295 +545,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                                 infoController.updateUserRating,
                                           );
                                         }),
-                                        // 进度条（仅登录态显示）
-                                        if (BangumiAuth.isLoggedIn &&
-                                            !showBangumiInfoSkeleton)
-                                          Observer(builder: (context) {
-                                            final total = infoController
-                                                        .episodeProgressTotal >
-                                                    0
-                                                ? infoController
-                                                    .episodeProgressTotal
-                                                : 1;
-                                            final watched = infoController
-                                                .episodeProgressWatched;
-                                            final progress = watched / total;
-                                            return Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 8),
-                                              child: SizedBox(
-                                                width: MediaQuery.of(context)
-                                                            .size
-                                                            .width >
-                                                        950
-                                                    ? 950
-                                                    : MediaQuery.of(context)
-                                                            .size
-                                                            .width -
-                                                        32,
-                                                child: GestureDetector(
-                                                  onTap: () =>
-                                                      _showProgressEditor(),
-                                                  child: Card(
-                                                    elevation: 0,
-                                                    color: Theme.of(context)
-                                                        .colorScheme
-                                                        .surfaceContainerHighest
-                                                        .withValues(alpha: 0.6),
-                                                    child: Padding(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 16,
-                                                          vertical: 10),
-                                                      child: Row(
-                                                        children: [
-                                                          Icon(
-                                                            Icons
-                                                                .play_circle_outline,
-                                                            size: 20,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .primary,
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                            child: Column(
-                                                              crossAxisAlignment:
-                                                                  CrossAxisAlignment
-                                                                      .start,
-                                                              mainAxisSize:
-                                                                  MainAxisSize
-                                                                      .min,
-                                                              children: [
-                                                                Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .spaceBetween,
-                                                                  children: [
-                                                                    Text(
-                                                                      '观看进度',
-                                                                      style:
-                                                                          TextStyle(
-                                                                        fontSize:
-                                                                            13,
-                                                                        color: Theme.of(context)
-                                                                            .colorScheme
-                                                                            .onSurfaceVariant,
-                                                                      ),
-                                                                    ),
-                                                                    Text(
-                                                                      '$watched / $total',
-                                                                      style:
-                                                                          TextStyle(
-                                                                        fontSize:
-                                                                            12,
-                                                                        fontWeight:
-                                                                            FontWeight.w600,
-                                                                        color: Theme.of(context)
-                                                                            .colorScheme
-                                                                            .primary,
-                                                                      ),
-                                                                    ),
-                                                                  ],
-                                                                ),
-                                                                const SizedBox(
-                                                                    height: 4),
-                                                                ClipRRect(
-                                                                  borderRadius:
-                                                                      BorderRadius
-                                                                          .circular(
-                                                                              3),
-                                                                  child:
-                                                                      LinearProgressIndicator(
-                                                                    value:
-                                                                        progress,
-                                                                    minHeight:
-                                                                        4,
-                                                                    backgroundColor: Theme.of(
-                                                                            context)
-                                                                        .colorScheme
-                                                                        .surfaceContainerHighest,
-                                                                  ),
-                                                                ),
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Icon(
-                                                            Icons.chevron_right,
-                                                            size: 18,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }),
-                                        // 我的评价（仅登录态显示）
-                                        if (BangumiAuth.isLoggedIn &&
-                                            !showBangumiInfoSkeleton)
-                                          Observer(builder: (context) {
-                                            final hasRating =
-                                                (infoController.userRating ??
-                                                        0) >
-                                                    0;
-                                            final hasComment = infoController
-                                                .userComment.isNotEmpty;
-                                            final hasAny =
-                                                hasRating || hasComment;
-                                            return Padding(
-                                              padding:
-                                                  const EdgeInsets.only(top: 8),
-                                              child: SizedBox(
-                                                width: MediaQuery.of(context)
-                                                            .size
-                                                            .width >
-                                                        950
-                                                    ? 950
-                                                    : MediaQuery.of(context)
-                                                            .size
-                                                            .width -
-                                                        32,
-                                                child: GestureDetector(
-                                                  onTap: _openFinishReviewSheet,
-                                                  child: Card(
-                                                    elevation: 0,
-                                                    color: Theme.of(context)
-                                                        .colorScheme
-                                                        .surfaceContainerHighest
-                                                        .withValues(alpha: 0.6),
-                                                    child: Padding(
-                                                      padding: const EdgeInsets
-                                                          .symmetric(
-                                                          horizontal: 16,
-                                                          vertical: 10),
-                                                      child: Row(
-                                                        children: [
-                                                          Icon(
-                                                            hasAny
-                                                                ? Icons
-                                                                    .rate_review_rounded
-                                                                : Icons
-                                                                    .edit_note_rounded,
-                                                            size: 20,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .primary,
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Expanded(
-                                                            child: Column(
-                                                              crossAxisAlignment:
-                                                                  CrossAxisAlignment
-                                                                      .start,
-                                                              mainAxisSize:
-                                                                  MainAxisSize
-                                                                      .min,
-                                                              children: [
-                                                                Row(
-                                                                  mainAxisAlignment:
-                                                                      MainAxisAlignment
-                                                                          .spaceBetween,
-                                                                  children: [
-                                                                    Text(
-                                                                      hasAny
-                                                                          ? '我的评价'
-                                                                          : '写短评',
-                                                                      style:
-                                                                          TextStyle(
-                                                                        fontSize:
-                                                                            13,
-                                                                        color: Theme.of(context)
-                                                                            .colorScheme
-                                                                            .onSurfaceVariant,
-                                                                      ),
-                                                                    ),
-                                                                    if (hasRating)
-                                                                      Text(
-                                                                        '${infoController.userRating} / 10',
-                                                                        style:
-                                                                            TextStyle(
-                                                                          fontSize:
-                                                                              12,
-                                                                          fontWeight:
-                                                                              FontWeight.w600,
-                                                                          color: Theme.of(context)
-                                                                              .colorScheme
-                                                                              .primary,
-                                                                        ),
-                                                                      ),
-                                                                  ],
-                                                                ),
-                                                                if (hasComment) ...[
-                                                                  const SizedBox(
-                                                                      height:
-                                                                          4),
-                                                                  Text(
-                                                                    infoController
-                                                                        .userComment,
-                                                                    maxLines: 2,
-                                                                    overflow:
-                                                                        TextOverflow
-                                                                            .ellipsis,
-                                                                    style:
-                                                                        TextStyle(
-                                                                      fontSize:
-                                                                          12,
-                                                                      color: Theme.of(
-                                                                              context)
-                                                                          .colorScheme
-                                                                          .onSurface,
-                                                                    ),
-                                                                  ),
-                                                                ] else if (!hasRating) ...[
-                                                                  const SizedBox(
-                                                                      height:
-                                                                          4),
-                                                                  Text(
-                                                                    '点击给这部番剧评分或留下短评',
-                                                                    style:
-                                                                        TextStyle(
-                                                                      fontSize:
-                                                                          12,
-                                                                      color: Theme.of(
-                                                                              context)
-                                                                          .colorScheme
-                                                                          .onSurfaceVariant,
-                                                                    ),
-                                                                  ),
-                                                                ],
-                                                              ],
-                                                            ),
-                                                          ),
-                                                          const SizedBox(
-                                                              width: 8),
-                                                          Icon(
-                                                            Icons.chevron_right,
-                                                            size: 18,
-                                                            color: Theme.of(
-                                                                    context)
-                                                                .colorScheme
-                                                                .onSurfaceVariant,
-                                                          ),
-                                                        ],
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ),
-                                              ),
-                                            );
-                                          }),
                                       ],
                                     ),
                                   ),
@@ -858,6 +564,20 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                       tabs: tabs.map((name) => Tab(text: name)).toList(),
                     ),
                   ),
+                ),
+                SliverToBoxAdapter(
+                  child: Observer(builder: (context) {
+                    final showBangumiInfoSkeleton =
+                        _isShowingBangumiInfoSkeleton;
+                    if (!BangumiAuth.isLoggedIn || showBangumiInfoSkeleton) {
+                      return const SizedBox.shrink();
+                    }
+                    return _InfoUserActionCards(
+                      infoController: infoController,
+                      onProgressTap: _showProgressEditor,
+                      onReviewTap: _openFinishReviewSheet,
+                    );
+                  }),
                 ),
               ];
             },
@@ -897,6 +617,235 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                 _showSourceSheet();
               },
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoUserActionCards extends StatelessWidget {
+  const _InfoUserActionCards({
+    required this.infoController,
+    required this.onProgressTap,
+    required this.onReviewTap,
+  });
+
+  static const double _maxWidth = 950;
+
+  final InfoController infoController;
+  final VoidCallback onProgressTap;
+  final VoidCallback onReviewTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: _maxWidth),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _InfoProgressCard(
+                infoController: infoController,
+                onTap: onProgressTap,
+              ),
+              const SizedBox(height: 8),
+              _InfoReviewCard(
+                infoController: infoController,
+                onTap: onReviewTap,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoProgressCard extends StatelessWidget {
+  const _InfoProgressCard({
+    required this.infoController,
+    required this.onTap,
+  });
+
+  final InfoController infoController;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = infoController.episodeProgressTotal > 0
+        ? infoController.episodeProgressTotal
+        : 1;
+    final watched = infoController.episodeProgressWatched;
+    final progress = watched / total;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Icon(
+                Icons.play_circle_outline,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '观看进度',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        Text(
+                          '$watched / $total',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(3),
+                      child: LinearProgressIndicator(
+                        value: progress,
+                        minHeight: 4,
+                        backgroundColor: Theme.of(context)
+                            .colorScheme
+                            .surfaceContainerHighest,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _InfoReviewCard extends StatelessWidget {
+  const _InfoReviewCard({
+    required this.infoController,
+    required this.onTap,
+  });
+
+  final InfoController infoController;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final hasRating = (infoController.userRating ?? 0) > 0;
+    final hasComment = infoController.userComment.isNotEmpty;
+    final hasAny = hasRating || hasComment;
+
+    return GestureDetector(
+      onTap: onTap,
+      child: Card(
+        elevation: 0,
+        margin: EdgeInsets.zero,
+        color: Theme.of(context)
+            .colorScheme
+            .surfaceContainerHighest
+            .withValues(alpha: 0.6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          child: Row(
+            children: [
+              Icon(
+                hasAny ? Icons.rate_review_rounded : Icons.edit_note_rounded,
+                size: 20,
+                color: Theme.of(context).colorScheme.primary,
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          hasAny ? '我的评价' : '写短评',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color:
+                                Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        if (hasRating)
+                          Text(
+                            '${infoController.userRating} / 10',
+                            style: TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                              color: Theme.of(context).colorScheme.primary,
+                            ),
+                          ),
+                      ],
+                    ),
+                    if (hasComment) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        infoController.userComment,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurface,
+                        ),
+                      ),
+                    ] else if (!hasRating) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '点击给这部番剧评分或留下短评',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Icon(
+                Icons.chevron_right,
+                size: 18,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ],
           ),
         ),
       ),
