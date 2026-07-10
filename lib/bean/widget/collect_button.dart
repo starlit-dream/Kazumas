@@ -44,7 +44,7 @@ class _CollectButtonState extends State<CollectButton> {
   // 4. 看过
   // 5. 抛弃
   late int collectType;
-  final CollectController collectController = Modular.get<CollectController>();
+  final CollectController collectController = inject<CollectController>();
 
   @override
   void initState() {
@@ -131,11 +131,15 @@ class _CollectButtonState extends State<CollectButton> {
               if (widget.onCollectChanged != null) {
                 await widget.onCollectChanged!(index);
               } else {
-                await collectController.addCollect(widget.bangumiItem, type: index);
+                await collectController.addCollect(
+                  widget.bangumiItem,
+                  type: index,
+                );
               }
-              if (mounted) {
-                setState(() {});
+              if (!mounted) {
+                return;
               }
+              setState(() {});
             }
           },
           child: Container(

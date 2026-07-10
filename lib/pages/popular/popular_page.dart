@@ -2,7 +2,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
-import 'package:kazumi/bean/widget/error_widget.dart';
+import 'package:kazumi/bean/widget/bangumi_mirror_error_widget.dart';
 import 'package:kazumi/bean/widget/custom_dropdown_menu.dart';
 import 'package:kazumi/pages/popular/popular_controller.dart';
 import 'package:kazumi/bean/card/bangumi_card.dart';
@@ -10,36 +10,38 @@ import 'package:kazumi/utils/constants.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:kazumi/utils/utils.dart';
-import 'package:kazumi/utils/logger.dart';
-import 'package:kazumi/pages/menu/menu.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/bean/appbar/drag_to_move_bar.dart' as dtb;
+import 'package:kazumi/utils/device.dart';
 
 class PopularPage extends StatefulWidget {
-  const PopularPage({super.key});
+  const PopularPage({
+    super.key,
+    required this.controller,
+  });
+
+  final PopularController controller;
 
   @override
   State<PopularPage> createState() => _PopularPageState();
 }
 
-class _PopularPageState extends State<PopularPage>
-    with AutomaticKeepAliveClientMixin {
+class _PopularPageState extends State<PopularPage> {
   DateTime? _lastPressedAt;
-  late NavigationBarState navigationBarState;
   final FocusNode _focusNode = FocusNode();
-  final ScrollController scrollController = ScrollController();
-  final PopularController popularController = Modular.get<PopularController>();
+  late final ScrollController scrollController;
+  PopularController get popularController => widget.controller;
 
   // Key used to position the dropdown menu for the tag selector
   final GlobalKey selectorKey = GlobalKey();
 
   @override
-  bool get wantKeepAlive => true;
-
-  @override
   void initState() {
     super.initState();
+    scrollController = ScrollController(
+      initialScrollOffset: popularController.scrollOffset,
+    );
     scrollController.addListener(scrollListener);
     if (popularController.trendList.isEmpty) {
       popularController.queryBangumiByTrend();
@@ -47,14 +49,10 @@ class _PopularPageState extends State<PopularPage>
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-  }
-
-  @override
   void dispose() {
     _focusNode.dispose();
     scrollController.removeListener(scrollListener);
+    scrollController.dispose();
     super.dispose();
   }
 
@@ -63,7 +61,8 @@ class _PopularPageState extends State<PopularPage>
     if (scrollController.position.pixels >=
             scrollController.position.maxScrollExtent - 200 &&
         !popularController.isLoadingMore) {
-      KazumiLogger().i('PopularPageController: Fetching next recommendation batch');
+      KazumiLogger()
+          .i('PopularPageController: Fetching next recommendation batch');
       if (popularController.currentTag != '') {
         popularController.queryBangumiByTag();
       } else {
@@ -73,8 +72,7 @@ class _PopularPageState extends State<PopularPage>
   }
 
   bool showWindowButton() {
-    return GStorage.setting
-        .get(SettingBoxKey.showWindowButton, defaultValue: false);
+    return GStorage.getSetting(SettingsKeys.showWindowButton);
   }
 
   void onBackPressed(BuildContext context) {
@@ -94,7 +92,6 @@ class _PopularPageState extends State<PopularPage>
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (bool didPop, Object? result) {
@@ -127,20 +124,19 @@ class _PopularPageState extends State<PopularPage>
                     return SliverToBoxAdapter(
                       child: SizedBox(
                         height: 400,
-                        child: GeneralErrorWidget(
-                          errMsg: '什么都没有找到 (´;ω;`)',
-                          actions: [
-                            GeneralErrorButton(
-                              onPressed: () {
-                                if (popularController.trendList.isEmpty) {
-                                  popularController.queryBangumiByTrend();
-                                } else {
-                                  popularController.queryBangumiByTag();
-                                }
-                              },
-                              text: '点击重试',
-                            ),
-                          ],
+                        child: BangumiMirrorErrorWidget(
+                          onRetry: () {
+                            if (popularController.trendList.isEmpty) {
+                              popularController.queryBangumiByTrend();
+                            } else {
+                              popularController.queryBangumiByTag();
+                            }
+                          },
+                          onSettingsReturned: () {
+                            if (mounted) {
+                              setState(() {});
+                            }
+                          },
                         ),
                       ),
                     );
@@ -268,18 +264,18 @@ class _PopularPageState extends State<PopularPage>
       if (MediaQuery.of(context).orientation == Orientation.portrait)
         IconButton(
           tooltip: '搜索',
-          onPressed: () => Modular.to.pushNamed('/search/'),
+          onPressed: () => context.pushNamed('/search/'),
           icon: const Icon(Icons.search),
         ),
     ];
     actions.add(
       IconButton(
         tooltip: '历史记录',
-        onPressed: () => Modular.to.pushNamed('/settings/history/'),
+        onPressed: () => context.pushNamed('/settings/history/'),
         icon: const Icon(Icons.history),
       ),
     );
-    if (Utils.isDesktop()) {
+    if (isDesktop()) {
       if (!showWindowButton()) {
         actions.add(
           IconButton(

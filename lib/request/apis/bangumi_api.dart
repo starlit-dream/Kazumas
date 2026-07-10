@@ -1,155 +1,86 @@
 import 'package:dio/dio.dart';
-import 'package:kazumi/utils/logger.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/request/api.dart';
+import 'package:kazumi/request/request.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/request/config/api_endpoints.dart';
 import 'package:kazumi/request/clients/bangumi_client.dart';
 import 'package:kazumi/request/core/network_exception.dart';
-import 'package:kazumi/request/request.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
-import 'package:kazumi/modules/bangumi/subject_relation.dart';
+import 'package:kazumi/modules/bangumi/bangumi_auth_models.dart';
 import 'package:kazumi/modules/bangumi/episode_progress.dart';
+import 'package:kazumi/modules/bangumi/subject_relation.dart';
 import 'package:kazumi/modules/comments/comment_response.dart';
 import 'package:kazumi/modules/characters/characters_response.dart';
 import 'package:kazumi/modules/bangumi/episode_item.dart';
-import 'package:kazumi/modules/bangumi/bangumi_auth_models.dart';
 import 'package:kazumi/modules/character/character_full_item.dart';
 import 'package:kazumi/modules/staff/staff_response.dart';
 import 'package:kazumi/modules/bangumi/bangumi_collection.dart';
 import 'package:kazumi/modules/collect/collect_type.dart';
 import 'package:kazumi/modules/collect/collect_type_mapper.dart';
 import 'package:kazumi/modules/bangumi/bangumi_collection_type.dart';
+import 'package:kazumi/modules/comments/comment_item.dart';
+import 'package:kazumi/utils/search_parser.dart';
 
+/// Kazumas-specific authenticated Bangumi operations.
+///
+/// The upstream client remains the default for public metadata. These methods
+/// keep the fork's user rating and episode-progress features on the same
+/// request stack while the upstream API layer evolves independently.
 class BangumiHTTP {
   static Options _authOptions() {
     final token = Request.setting
-        .get('bangumiAccessToken', defaultValue: '')
+        .get(SettingBoxKey.bangumiAccessToken, defaultValue: '')
         .toString()
         .trim();
-    return Options(headers: {
-      'Authorization': 'Bearer $token',
-    });
-  }
-
-  static int? _mapCollectTypeFromBangumi(int? type) {
-    switch (type) {
-      case 1:
-        return 2;
-      case 2:
-        return 4;
-      case 3:
-        return 1;
-      case 4:
-        return 3;
-      case 5:
-        return 5;
-      default:
-        return null;
-    }
-  }
-
-  static int? _mapCollectTypeToBangumi(int? type) {
-    switch (type) {
-      case 1:
-        return 3;
-      case 2:
-        return 1;
-      case 3:
-        return 4;
-      case 4:
-        return 2;
-      case 5:
-        return 5;
-      default:
-        return null;
-    }
+    return Options(headers: {'Authorization': 'Bearer $token'});
   }
 
   static Future<BangumiAuthUser> getCurrentUser() async {
-    final res = await Request().get(
+    final response = await Request().get(
       Api.bangumiAPIDomain + Api.bangumiMyself,
       options: _authOptions(),
       extra: {'customError': 'Bangumi 登录校验失败'},
       shouldRethrow: true,
     );
-    return BangumiAuthUser.fromJson(Map<String, dynamic>.from(res.data));
+    return BangumiAuthUser.fromJson(Map<String, dynamic>.from(response.data));
   }
 
-  static Future<int?> getCollectionType(int subjectId) async {
+  static Future<BangumiSubjectCollection?> getUserSubjectCollection(
+    int subjectId,
+  ) async {
     try {
       final username = Request.setting
-          .get('bangumiUsername', defaultValue: '')
-          .toString()
-          .trim();
-      if (username.isEmpty) {
-        throw Exception('Bangumi 用户名为空，请重新登录');
-      }
-      final res = await Request().get(
-        Api.formatUrl(
-            Api.bangumiAPIDomain + '/v0/users/{0}/collections/{1}',
-            [username, subjectId]),
-        options: _authOptions(),
-        extra: {'customError': ''},
-        shouldRethrow: true,
-      );
-      final collection = BangumiSubjectCollection.fromJson(
-        Map<String, dynamic>.from(res.data),
-      );
-      return _mapCollectTypeFromBangumi(collection.type);
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 404) {
-        return 0;
-      }
-      rethrow;
-    }
-  }
-
-  static Future<BangumiSubjectCollection?> getUserSubjectCollection(int subjectId) async {
-    try {
-      final username = Request.setting
-          .get('bangumiUsername', defaultValue: '')
+          .get(SettingBoxKey.bangumiUsername, defaultValue: '')
           .toString()
           .trim();
       if (username.isEmpty) {
         return null;
       }
-      final res = await Request().get(
+      final response = await Request().get(
         Api.formatUrl(
-            Api.bangumiAPIDomain + '/v0/users/{0}/collections/{1}',
-            [username, subjectId]),
+          '${Api.bangumiAPIDomain}/v0/users/{0}/collections/{1}',
+          [username, subjectId],
+        ),
         options: _authOptions(),
         extra: {'customError': ''},
       );
       return BangumiSubjectCollection.fromJson(
-        Map<String, dynamic>.from(res.data),
+        Map<String, dynamic>.from(response.data),
       );
-    } catch (e) {
-      KazumiLogger().e('Bangumi: failed to get user collection', error: e);
+    } catch (error) {
+      KazumiLogger().e(
+        'Bangumi: failed to get user collection',
+        error: error,
+      );
       return null;
     }
   }
 
-  static Future<void> updateCollectionType(int subjectId, int type) async {
-    final bangumiType = _mapCollectTypeToBangumi(type);
-    if (bangumiType == null) {
-      return;
-    }
-    await Request().post(
-      Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiMyCollection, [subjectId]),
-      data: {'type': bangumiType},
-      options: _authOptions(),
-      extra: {'customError': 'Bangumi 收藏同步失败'},
-      shouldRethrow: true,
-    );
+  static Future<void> updateUserRating(int subjectId, int rating) {
+    return updateUserReview(subjectId: subjectId, rating: rating);
   }
 
-  static Future<void> updateUserRating(int subjectId, int rating) async {
-    await updateUserReview(subjectId: subjectId, rating: rating);
-  }
-
-  /// 更新用户对某条目的整体评价：评分、短评、标签、私密、收藏类型。
-  ///
-  /// 任意参数传 null 表示不修改该字段；comment 传空字符串表示清空短评。
-  /// type 通常一并传 2（看过）以兜底用户尚未把番剧标记为「看过」的情况。
   static Future<void> updateUserReview({
     required int subjectId,
     int? rating,
@@ -168,7 +99,10 @@ class BangumiHTTP {
       return;
     }
     await Request().patch(
-      Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiMyCollection, [subjectId]),
+      Api.formatUrl(
+        Api.bangumiAPIDomain + Api.bangumiMyCollection,
+        [subjectId],
+      ),
       data: body,
       options: _authOptions(),
       extra: {'customError': 'Bangumi 评价提交失败'},
@@ -176,41 +110,26 @@ class BangumiHTTP {
     );
   }
 
-  static Future<List<BangumiSubjectCollection>> getUserCollections({
-    int? type,
-    int limit = 100,
-    int offset = 0,
-  }) async {
-    final username = Request.setting
-        .get('bangumiUsername', defaultValue: '')
-        .toString()
-        .trim();
-    if (username.isEmpty) {
-      throw Exception('Bangumi 用户名为空，请重新登录');
-    }
-    final queryParameters = <String, dynamic>{
-      'subject_type': 2,
-      'limit': limit,
-      'offset': offset,
-    };
-    if (type != null && type > 0) {
-      final bangumiType = _mapCollectTypeToBangumi(type);
-      if (bangumiType != null) {
-        queryParameters['type'] = bangumiType;
+  static Future<int?> getEpisodeCollectionType(int episodeId) async {
+    try {
+      final response = await Request().get(
+        Api.formatUrl(
+          Api.bangumiAPIDomain + Api.bangumiMyEpisodeCollection,
+          [episodeId],
+        ),
+        options: _authOptions(),
+        extra: {'customError': ''},
+        shouldRethrow: true,
+      );
+      return BangumiEpisodeCollection.fromJson(
+        Map<String, dynamic>.from(response.data),
+      ).type;
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
+        return 0;
       }
+      rethrow;
     }
-    final res = await Request().get(
-      Api.formatUrl(Api.bangumiAPIDomain + Api.bangumiUserCollections, [username]),
-      data: queryParameters,
-      options: _authOptions(),
-      extra: {'customError': 'Bangumi 收藏列表同步失败'},
-      shouldRethrow: true,
-    );
-    final data = (res.data['data'] as List<dynamic>? ?? []);
-    return data
-        .whereType<Map<String, dynamic>>()
-        .map(BangumiSubjectCollection.fromJson)
-        .toList();
   }
 
   static Future<void> markEpisodeWatched({
@@ -219,7 +138,9 @@ class BangumiHTTP {
   }) async {
     await Request().put(
       Api.formatUrl(
-          Api.bangumiAPIDomain + Api.bangumiMyEpisodeCollection, [episodeId]),
+        Api.bangumiAPIDomain + Api.bangumiMyEpisodeCollection,
+        [episodeId],
+      ),
       data: {'type': 2},
       options: _authOptions(),
       extra: {'customError': 'Bangumi 章节进度同步失败'},
@@ -227,7 +148,9 @@ class BangumiHTTP {
     );
     await Request().patch(
       Api.formatUrl(
-          Api.bangumiAPIDomain + Api.bangumiMyCollectionEpisodes, [subjectId]),
+        Api.bangumiAPIDomain + Api.bangumiMyCollectionEpisodes,
+        [subjectId],
+      ),
       data: {
         'episode_id': [episodeId],
         'type': 2,
@@ -238,55 +161,42 @@ class BangumiHTTP {
     );
   }
 
-  static Future<int?> getEpisodeCollectionType(int episodeId) async {
-    try {
-      final res = await Request().get(
-        Api.formatUrl(
-            Api.bangumiAPIDomain + Api.bangumiMyEpisodeCollection, [episodeId]),
-        options: _authOptions(),
-        extra: {'customError': ''},
-        shouldRethrow: true,
-      );
-      final collection = BangumiEpisodeCollection.fromJson(
-        Map<String, dynamic>.from(res.data),
-      );
-      return collection.type;
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 404) {
-        return 0;
-      }
-      rethrow;
-    }
-  }
-
   static Future<BangumiEpisodeProgressResponse?> getEpisodeProgress(
-      int subjectId) async {
+    int subjectId,
+  ) async {
     try {
       final username = Request.setting
-          .get('bangumiUsername', defaultValue: '')
+          .get(SettingBoxKey.bangumiUsername, defaultValue: '')
           .toString()
           .trim();
       if (username.isEmpty) {
-        throw Exception('Bangumi 用户名为空，请重新登录');
+        return null;
       }
-      final res = await Request().get(
+      final response = await Request().get(
         Api.formatUrl(
-            Api.bangumiAPIDomain + Api.bangumiMyCollectionEpisodes,
-            [subjectId]),
+          Api.bangumiAPIDomain + Api.bangumiMyCollectionEpisodes,
+          [subjectId],
+        ),
         options: _authOptions(),
         extra: {'customError': ''},
       );
       return BangumiEpisodeProgressResponse.fromJson(
-        Map<String, dynamic>.from(res.data),
+        Map<String, dynamic>.from(response.data),
       );
-    } on DioException catch (e) {
-      if (e.response?.statusCode == 404) {
+    } on DioException catch (error) {
+      if (error.response?.statusCode == 404) {
         return null;
       }
-      KazumiLogger().e('Bangumi: failed to get episode progress', error: e);
+      KazumiLogger().e(
+        'Bangumi: failed to get episode progress',
+        error: error,
+      );
       return null;
-    } catch (e) {
-      KazumiLogger().e('Bangumi: failed to get episode progress', error: e);
+    } catch (error) {
+      KazumiLogger().e(
+        'Bangumi: failed to get episode progress',
+        error: error,
+      );
       return null;
     }
   }
@@ -296,15 +206,15 @@ class BangumiHTTP {
     required List<int> episodeIds,
     required int type,
   }) async {
-    if (episodeIds.isEmpty) return;
+    if (episodeIds.isEmpty) {
+      return;
+    }
     await Request().patch(
       Api.formatUrl(
-          Api.bangumiAPIDomain + Api.bangumiMyCollectionEpisodes,
-          [subjectId]),
-      data: {
-        'episode_id': episodeIds,
-        'type': type,
-      },
+        Api.bangumiAPIDomain + Api.bangumiMyCollectionEpisodes,
+        [subjectId],
+      ),
+      data: {'episode_id': episodeIds, 'type': type},
       options: _authOptions(),
       extra: {'customError': 'Bangumi 剧集进度同步失败'},
       shouldRethrow: true,
@@ -312,27 +222,34 @@ class BangumiHTTP {
   }
 
   static Future<List<BangumiSubjectRelation>> getSubjectRelations(
-      int subjectId) async {
+    int subjectId,
+  ) async {
     try {
-      final res = await Request().get(
+      final response = await Request().get(
         Api.formatUrl(
-            Api.bangumiAPIDomain + Api.bangumiSubjectRelation, [subjectId]),
+          Api.bangumiAPIDomain + Api.bangumiSubjectRelation,
+          [subjectId],
+        ),
         extra: {'customError': ''},
       );
-      final data = res.data as List<dynamic>? ?? [];
+      final data = response.data as List<dynamic>? ?? [];
       return data
           .whereType<Map<String, dynamic>>()
           .map(BangumiSubjectRelation.fromJson)
           .toList();
-    } catch (e) {
-      KazumiLogger().e('Bangumi: failed to get subject relations', error: e);
+    } catch (error) {
+      KazumiLogger()
+          .e('Bangumi: failed to get subject relations', error: error);
       return [];
     }
   }
 
-  static Future<List<EpisodeInfo>> getBangumiEpisodes(int subjectId,
-      {int limit = 100, int offset = 0}) {
-    return BangumiApi.getBangumiEpisodes(subjectId, limit: limit, offset: offset);
+  static Future<List<EpisodeInfo>> getBangumiEpisodes(
+    int subjectId, {
+    int limit = 100,
+    int offset = 0,
+  }) {
+    return BangumiApi.getBangumiEpisodesByID(subjectId);
   }
 
   static Future<EpisodeInfo> getBangumiEpisodeByID(int id, int episode) {
@@ -342,8 +259,7 @@ class BangumiHTTP {
 
 class BangumiApi {
   static final BangumiClient _client = BangumiClient.instance;
-  // why the api havn't been replaced by getCalendarBySearch?
-  // Because getCalendarBySearch is not stable, it will miss some bangumi items.
+
   static Future<List<List<BangumiItem>>> getCalendar() async {
     List<List<BangumiItem>> bangumiCalendar = [];
     try {
@@ -367,9 +283,8 @@ class BangumiApi {
     return bangumiCalendar;
   }
 
-  // Get clander by search API, we need a list of strings (the start of the season and the end of the season) eg: ["2024-07-01", "2024-10-01"]
-  // because the air date is the launch date of the anime, it is usually a few days before the start of the season
-  // So we usually use the start of the season month -1 and the end of the season month -1
+  // Official fallback for season switching. Mirror mode uses the cached
+  // /kazumi/v1/calendar/season endpoint instead of Bangumi search.
   static Future<List<List<BangumiItem>>> getCalendarBySearch(
       List<String> dateRange, int limit, int offset) async {
     List<BangumiItem> bangumiList = [];
@@ -415,6 +330,45 @@ class BangumiApi {
     } catch (e) {
       KazumiLogger()
           .e('Network: fetch bangumi item to calendar failed', error: e);
+    }
+    return bangumiCalendar;
+  }
+
+  static String buildBangumiMirrorSeasonCalendarPath(List<String> dateRange) {
+    return Uri(
+      path: ApiEndpoints.bangumiMirrorSeasonCalendar,
+      queryParameters: {
+        'start': dateRange[0],
+        'end': dateRange[1],
+      },
+    ).toString();
+  }
+
+  static Future<List<List<BangumiItem>>> getBangumiMirrorSeasonCalendar(
+      List<String> dateRange) async {
+    List<List<BangumiItem>> bangumiCalendar = [];
+    try {
+      final jsonData = await _client.get(
+        ApiEndpoints.bangumiMirrorDomain +
+            buildBangumiMirrorSeasonCalendarPath(dateRange),
+      );
+      for (int i = 1; i <= 7; i++) {
+        List<BangumiItem> bangumiList = [];
+        final jsonList = jsonData['$i'] ?? [];
+        for (dynamic jsonItem in jsonList) {
+          try {
+            final subject =
+                jsonItem is Map<String, dynamic> ? jsonItem['subject'] : null;
+            if (subject is Map<String, dynamic>) {
+              bangumiList.add(BangumiItem.fromJson(subject));
+            }
+          } catch (_) {}
+        }
+        bangumiCalendar.add(bangumiList);
+      }
+    } catch (e) {
+      KazumiLogger().e('Network: resolve bangumi mirror season calendar failed',
+          error: e);
     }
     return bangumiCalendar;
   }
@@ -490,22 +444,115 @@ class BangumiApi {
     return bangumiList;
   }
 
+  static String buildBangumiMirrorPopularPath({
+    String tag = '',
+    int limit = 24,
+    int offset = 0,
+  }) {
+    return Uri(
+      path: ApiEndpoints.bangumiMirrorPopularSubjects,
+      queryParameters: {
+        if (tag.isNotEmpty) 'tag': tag,
+        'limit': limit.toString(),
+        'offset': offset.toString(),
+      },
+    ).toString();
+  }
+
+  static Future<List<BangumiItem>> getBangumiMirrorPopularSubjects({
+    String tag = '',
+    int limit = 24,
+    int offset = 0,
+  }) async {
+    List<BangumiItem> bangumiList = [];
+    try {
+      final jsonData = await _client.get(
+        ApiEndpoints.bangumiMirrorDomain +
+            buildBangumiMirrorPopularPath(
+              tag: tag,
+              limit: limit,
+              offset: offset,
+            ),
+      );
+      final jsonList = jsonData is List ? jsonData : jsonData['data'];
+      for (dynamic jsonItem in jsonList) {
+        if (jsonItem is Map<String, dynamic>) {
+          bangumiList.add(BangumiItem.fromJson(jsonItem));
+        }
+      }
+    } catch (e) {
+      KazumiLogger()
+          .e('Network: resolve bangumi mirror popular list failed', error: e);
+    }
+    return bangumiList;
+  }
+
+  static List<String> _buildNumberFilter<T extends num>(T? min, T? max) {
+    return [
+      if (min != null) '>=$min',
+      if (max != null) '<=$max',
+    ];
+  }
+
+  static Map<String, dynamic> buildBangumiSearchParams(
+    String keyword, {
+    List<String> tags = const [],
+    String sort = 'heat',
+    SearchDateRange? dateRange,
+    SearchIntRange? rankRange,
+    SearchDoubleRange? scoreRange,
+    List<int> weekdays = const [],
+  }) {
+    final rankFilter = rankRange?.isValid == true
+        ? _buildNumberFilter<int>(rankRange!.min, rankRange.max)
+        : (sort == 'rank')
+            ? [">0", "<=99999"]
+            : [">=0", "<=99999"];
+
+    final filter = <String, dynamic>{
+      "type": [2],
+      "tag": tags,
+      "rank": rankFilter,
+      "nsfw": false
+    };
+
+    if (dateRange?.isValid == true) {
+      filter["air_date"] = [">=${dateRange!.start}", "<${dateRange.end}"];
+    }
+    if (scoreRange?.isValid == true) {
+      filter["rating"] =
+          _buildNumberFilter<double>(scoreRange!.min, scoreRange.max);
+    }
+    if (weekdays.isNotEmpty) {
+      filter["air_weekday"] = weekdays.toSet().toList()..sort();
+    }
+
+    return <String, dynamic>{
+      'keyword': keyword,
+      'sort': sort,
+      "filter": filter,
+    };
+  }
+
   static Future<List<BangumiItem>> bangumiSearch(String keyword,
       {List<String> tags = const [],
       int offset = 0,
-      String sort = 'heat'}) async {
+      String sort = 'heat',
+      SearchDateRange? dateRange,
+      SearchIntRange? rankRange,
+      SearchDoubleRange? scoreRange,
+      List<int> weekdays = const []}) async {
     List<BangumiItem> bangumiList = [];
 
-    var params = <String, dynamic>{
-      'keyword': keyword,
-      'sort': sort,
-      "filter": {
-        "type": [2],
-        "tag": tags,
-        "rank": (sort == 'rank') ? [">0", "<=99999"] : [">=0", "<=99999"],
-        "nsfw": false
-      },
-    };
+    final params = buildBangumiSearchParams(
+      keyword,
+      tags: tags,
+      sort: sort,
+      dateRange: dateRange,
+      rankRange: rankRange,
+      scoreRange: scoreRange,
+      weekdays: weekdays,
+    );
 
     try {
       final jsonData = await _client.post(
@@ -538,35 +585,14 @@ class BangumiApi {
     try {
       final jsonData = await _client.get(
         ApiEndpoints.formatUrl(
-            ApiEndpoints.bangumiAPIDomain + ApiEndpoints.bangumiInfoByID, [id]),
+            ApiEndpoints.bangumiAPINextDomain +
+                ApiEndpoints.bangumiInfoByIDNext,
+            [id]),
       );
       return BangumiItem.fromJson(jsonData);
     } catch (e) {
       KazumiLogger().e('Network: resolve bangumi item failed', error: e);
       return null;
-    }
-  }
-
-  static Future<List<EpisodeInfo>> getBangumiEpisodes(int subjectId,
-      {int limit = 100, int offset = 0}) async {
-    try {
-      var params = <String, dynamic>{
-        'subject_id': subjectId,
-        'limit': limit,
-        'offset': offset,
-      };
-      final res = await Request().get(
-        Api.bangumiAPIDomain + Api.bangumiEpisodeByID,
-        data: params,
-      );
-      final data = res.data['data'] as List<dynamic>? ?? [];
-      return data
-          .whereType<Map<String, dynamic>>()
-          .map(EpisodeInfo.fromJson)
-          .toList();
-    } catch (e) {
-      KazumiLogger().e('Bangumi: failed to get episodes', error: e);
-      return [];
     }
   }
 
@@ -690,15 +716,21 @@ class BangumiApi {
   }
 
   static Future<String?> getUsername() async {
+    final user = await getCurrentUser();
+    return user?.username;
+  }
+
+  static Future<User?> getCurrentUser() async {
     try {
       final jsonData = await _client.get(
         ApiEndpoints.formatUrl(
-            ApiEndpoints.bangumiAPIDomain + ApiEndpoints.bangumiUsernameByToken,
+            ApiEndpoints.bangumiAuthAPIMirrorDomain +
+                ApiEndpoints.bangumiUsernameByToken,
             []),
         requiresAuth: true,
       );
       if (jsonData['id'] != null) {
-        return jsonData['username'] ?? 'Unknown';
+        return User.fromJson(Map<String, dynamic>.from(jsonData));
       }
     } on NetworkException catch (e) {
       if (e.statusCode == 401) {
@@ -707,7 +739,7 @@ class BangumiApi {
       }
       rethrow;
     } catch (e) {
-      KazumiLogger().e('Network: get username failed', error: e);
+      KazumiLogger().e('Network: get current user failed', error: e);
     }
     return null;
   }
@@ -751,7 +783,7 @@ class BangumiApi {
           dynamic jsonData;
           try {
             final url = ApiEndpoints.formatUrl(
-                ApiEndpoints.bangumiAPIDomain +
+                ApiEndpoints.bangumiAuthAPIMirrorDomain +
                     ApiEndpoints.bangumiGetCollection,
                 [resolvedUsername, limit, offset, collectionType.value]);
             jsonData = await _client.get(
@@ -819,7 +851,8 @@ class BangumiApi {
     try {
       await _client.post(
         ApiEndpoints.formatUrl(
-            ApiEndpoints.bangumiAPIDomain + ApiEndpoints.bangumiSetCollection,
+            ApiEndpoints.bangumiAuthAPIMirrorDomain +
+                ApiEndpoints.bangumiSetCollection,
             [id]),
         data: data,
         requiresAuth: true,
@@ -858,5 +891,25 @@ class BangumiApi {
       return false;
     }
     return await updateBangumiById(id, {'type': type.value});
+  }
+
+  /// update or add Bangumi evaluation by subjectID
+  static Future<bool> addOrUpdateBangumiEvaluationBySubjectID(
+    int subjectID,
+    int localType, {
+    String? comment,
+    int? rate,
+    List<String>? tags,
+  }) async {
+    final bangumiType =
+        CollectType.fromValue(localType).toBangumiCollectionType();
+    if (bangumiType == null) {
+      return false;
+    }
+    final data = <String, dynamic>{'type': bangumiType.value};
+    if (comment != null) data['comment'] = comment;
+    if (rate != null) data['rate'] = rate;
+    if (tags != null) data['tags'] = tags;
+    return updateBangumiById(subjectID, data);
   }
 }

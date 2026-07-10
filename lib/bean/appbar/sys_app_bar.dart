@@ -1,10 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/bean/widget/embedded_native_control_area.dart';
-import 'package:kazumi/utils/storage.dart';
-import 'package:kazumi/utils/utils.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:window_manager/window_manager.dart';
+import 'package:kazumi/utils/device.dart';
 
 class SysAppBar extends StatelessWidget implements PreferredSizeWidget {
   final double? toolbarHeight;
@@ -41,8 +42,7 @@ class SysAppBar extends StatelessWidget implements PreferredSizeWidget {
       this.needTopOffset = true});
 
   bool showWindowButton() {
-    return GStorage.setting
-        .get(SettingBoxKey.showWindowButton, defaultValue: false);
+    return GStorage.getSetting(SettingsKeys.showWindowButton);
   }
 
   @override
@@ -51,7 +51,7 @@ class SysAppBar extends StatelessWidget implements PreferredSizeWidget {
     if (actions != null) {
       acs.addAll(actions!);
     }
-    if (Utils.isDesktop()) {
+    if (isDesktop()) {
       // acs.add(IconButton(onPressed: () => windowManager.minimize(), icon: const Icon(Icons.minimize)));
       if (!showWindowButton()) {
         acs.add(CloseButton(onPressed: () => windowManager.close()));
@@ -59,8 +59,7 @@ class SysAppBar extends StatelessWidget implements PreferredSizeWidget {
       acs.add(const SizedBox(width: 8));
     }
     return GestureDetector(
-      onPanStart: (_) =>
-          (Utils.isDesktop()) ? windowManager.startDragging() : null,
+      onPanStart: (_) => (isDesktop()) ? windowManager.startDragging() : null,
       child: AppBar(
         toolbarHeight: preferredSize.height,
         scrolledUnderElevation: 0.0,
@@ -82,12 +81,12 @@ class SysAppBar extends StatelessWidget implements PreferredSizeWidget {
                 requireOffset: needTopOffset,
                 child: leading!,
               )
-            : Navigator.canPop(context)
+            : (ModalRoute.of(context)?.impliesAppBarDismissal ?? false)
                 ? EmbeddedNativeControlArea(
                     requireOffset: needTopOffset,
                     child: IconButton(
                       onPressed: () {
-                        Navigator.maybePop(context);
+                        context.maybePop();
                       },
                       icon: Icon(Icons.arrow_back),
                     ),

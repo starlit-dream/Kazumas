@@ -7,7 +7,7 @@ import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/modules/bangumi/sync_priority.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
-import 'package:kazumi/utils/bangumi_sync_service.dart';
+import 'package:kazumi/services/sync/bangumi_sync_service.dart';
 import 'package:kazumi/utils/storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -397,8 +397,7 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
           children: [
             CircleAvatar(
               radius: 22,
-              backgroundColor:
-                  Theme.of(context).colorScheme.primaryContainer,
+              backgroundColor: Theme.of(context).colorScheme.primaryContainer,
               child: avatarUrl.isNotEmpty
                   ? ClipRRect(
                       borderRadius: BorderRadius.circular(22),
@@ -513,7 +512,8 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
             border: const OutlineInputBorder(),
             helperText: '登录成功后本地加密保存，仅用于自动登录获取 Token',
             suffixIcon: IconButton(
-              onPressed: () => setState(() => obscurePassword = !obscurePassword),
+              onPressed: () =>
+                  setState(() => obscurePassword = !obscurePassword),
               icon: Icon(
                 obscurePassword
                     ? Icons.visibility_off_rounded
@@ -528,8 +528,7 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
           decoration: const InputDecoration(
             labelText: 'Bangumi 验证码',
             border: OutlineInputBorder(),
-            helperText:
-                '首次登录按当前页面验证码填写；成功后后续优先使用 Refresh Token 续期',
+            helperText: '首次登录按当前页面验证码填写；成功后后续优先使用 Refresh Token 续期',
           ),
           inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
         ),
@@ -594,8 +593,7 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
           decoration: const InputDecoration(
             labelText: '授权码或回调链接',
             border: OutlineInputBorder(),
-            helperText:
-                '在浏览器完成 Bangumi 授权后，将 code 或完整回调链接粘贴到这里',
+            helperText: '在浏览器完成 Bangumi 授权后，将 code 或完整回调链接粘贴到这里',
           ),
         ),
         const SizedBox(height: 16),
@@ -636,8 +634,7 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
           decoration: const InputDecoration(
             labelText: 'Bangumi Access Token',
             border: OutlineInputBorder(),
-            helperText:
-                '粘贴已有 Access Token。保存前会调用 Bangumi /v0/me 校验账号信息。',
+            helperText: '粘贴已有 Access Token。保存前会调用 Bangumi /v0/me 校验账号信息。',
           ),
         ),
         const SizedBox(height: 12),
@@ -679,7 +676,11 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('同步设置', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+        Text('同步设置',
+            style: Theme.of(context)
+                .textTheme
+                .titleMedium
+                ?.copyWith(fontWeight: FontWeight.w600)),
         const SizedBox(height: 12),
         Card(
           child: SettingsSection(
@@ -691,8 +692,10 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
                   await setting.put(SettingBoxKey.bangumiSyncEnable, newValue);
                   if (mounted) setState(() => bangumiSyncEnable = newValue);
                 },
-                title: Text('启用 Bangumi 同步', style: TextStyle(fontFamily: fontFamily)),
-                description: Text('启用后，收藏状态变化时会自动同步到 Bangumi', style: TextStyle(fontFamily: fontFamily)),
+                title: Text('启用 Bangumi 同步',
+                    style: TextStyle(fontFamily: fontFamily)),
+                description: Text('启用后，收藏状态变化时会自动同步到 Bangumi',
+                    style: TextStyle(fontFamily: fontFamily)),
                 initialValue: bangumiSyncEnable,
               ),
               SettingsTile.switchTile(
@@ -706,7 +709,8 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
                   if (mounted) setState(() {});
                 },
                 title: Text('即时同步提示', style: TextStyle(fontFamily: fontFamily)),
-                description: Text('点击追番按钮触发即时同步时显示提示框', style: TextStyle(fontFamily: fontFamily)),
+                description: Text('点击追番按钮触发即时同步时显示提示框',
+                    style: TextStyle(fontFamily: fontFamily)),
                 initialValue: bangumiImmediateSyncToastEnable,
               ),
               SettingsTile.navigation(
@@ -718,7 +722,8 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
                   }
                 },
                 title: Text('同步优先级', style: TextStyle(fontFamily: fontFamily)),
-                description: Text('当本地与 Bangumi 状态不一致时优先使用哪个状态', style: TextStyle(fontFamily: fontFamily)),
+                description: Text('当本地与 Bangumi 状态不一致时优先使用哪个状态',
+                    style: TextStyle(fontFamily: fontFamily)),
                 value: MenuAnchor(
                     consumeOutsideTap: true,
                     controller: syncPriorityMenuController,
@@ -729,12 +734,10 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
                       for (final entry in BangumiSyncPriority.values)
                         MenuItemButton(
                             requestFocusOnHover: false,
-                            onPressed: () =>
-                                updateSyncPriority(entry.value),
+                            onPressed: () => updateSyncPriority(entry.value),
                             child: Container(
                                 height: 48,
-                                constraints:
-                                    BoxConstraints(minWidth: 112),
+                                constraints: BoxConstraints(minWidth: 112),
                                 child: Align(
                                   alignment: Alignment.centerLeft,
                                   child: Text(
@@ -763,7 +766,8 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
                   await syncWithProgress();
                 },
                 title: Text("立即同步状态", style: TextStyle(fontFamily: fontFamily)),
-                description: Text('同步状态不一致或仅存在于本地/远端的条目', style: TextStyle(fontFamily: fontFamily)),
+                description: Text('同步状态不一致或仅存在于本地/远端的条目',
+                    style: TextStyle(fontFamily: fontFamily)),
               ),
             ],
           ),
@@ -797,7 +801,11 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
 
                   // Login method (only show when not logged in)
                   if (!BangumiAuth.isLoggedIn) ...[
-                    Text('登录方式', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600)),
+                    Text('登录方式',
+                        style: Theme.of(context)
+                            .textTheme
+                            .titleMedium
+                            ?.copyWith(fontWeight: FontWeight.w600)),
                     const SizedBox(height: 12),
                     _buildMethodSelector(),
                     const SizedBox(height: 12),
@@ -827,7 +835,8 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
                   _buildSyncSettings(),
 
                   // Token quick save / verify (when logged in via token)
-                  if (BangumiAuth.isLoggedIn && selectedMethod == _LoginMethod.token) ...[
+                  if (BangumiAuth.isLoggedIn &&
+                      selectedMethod == _LoginMethod.token) ...[
                     const SizedBox(height: 16),
                     FilledButton.tonal(
                       onPressed: isVerifying ? null : verifyToken,

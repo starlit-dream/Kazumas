@@ -15,7 +15,6 @@ class Api {
   static const String iconUrl = ApiEndpoints.iconUrl;
   static const String pluginShop = ApiEndpoints.pluginShop;
   static const String latestApp = ApiEndpoints.latestApp;
-  static const String gitMirror = ApiEndpoints.gitMirror;
   static const String dandanIndex = ApiEndpoints.dandanIndex;
   static const String bangumiIndex = ApiEndpoints.bangumiIndex;
   static const String bangumiAPIDomain = ApiEndpoints.bangumiAPIDomain;

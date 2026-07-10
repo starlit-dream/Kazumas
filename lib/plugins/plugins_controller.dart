@@ -4,12 +4,12 @@ import 'package:mobx/mobx.dart';
 import 'package:flutter/services.dart' show rootBundle, AssetManifest;
 import 'package:path_provider/path_provider.dart';
 import 'package:kazumi/plugins/plugins.dart';
-import 'package:kazumi/plugins/plugin_validity_tracker.dart';
-import 'package:kazumi/plugins/plugin_install_time_tracker.dart';
+import 'package:kazumi/services/plugin/plugin_validity_tracker.dart';
+import 'package:kazumi/services/plugin/plugin_install_time_tracker.dart';
 import 'package:kazumi/request/apis/plugin_catalog_api.dart';
 import 'package:kazumi/modules/plugin/plugin_http_module.dart';
-import 'package:kazumi/utils/logger.dart';
-import 'package:kazumi/request/config/api_endpoints.dart';
+import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/utils/version.dart';
 
 part 'plugins_controller.g.dart';
 
@@ -150,9 +150,6 @@ abstract class _PluginsController with Store {
   }
 
   void onReorder(int oldIndex, int newIndex) {
-    if (oldIndex < newIndex) {
-      newIndex -= 1;
-    }
     final plugin = pluginList.removeAt(oldIndex);
     pluginList.insert(newIndex, plugin);
     savePlugins();
@@ -177,14 +174,22 @@ abstract class _PluginsController with Store {
     return plugin;
   }
 
+  bool _remoteIsNewer(String localVersion, String remoteVersion) {
+    try {
+      return needUpdate(localVersion, remoteVersion);
+    } catch (_) {
+      return localVersion != remoteVersion;
+    }
+  }
+
   String pluginStatus(PluginHTTPItem pluginHTTPItem) {
     String pluginStatus = 'install';
     for (Plugin plugin in pluginList) {
       if (pluginHTTPItem.name == plugin.name) {
-        if (pluginHTTPItem.version == plugin.version) {
-          pluginStatus = 'installed';
-        } else {
+        if (_remoteIsNewer(plugin.version, pluginHTTPItem.version)) {
           pluginStatus = 'update';
+        } else {
+          pluginStatus = 'installed';
         }
         break;
       }
@@ -199,7 +204,7 @@ abstract class _PluginsController with Store {
     PluginHTTPItem p = pluginHTTPList.firstWhere(
       (p) => p.name == plugin.name,
     );
-    return p.version == plugin.version ? "latest" : "updatable";
+    return _remoteIsNewer(plugin.version, p.version) ? "updatable" : "latest";
   }
 
   Future<int> tryUpdatePlugin(Plugin plugin) async {
@@ -209,8 +214,20 @@ abstract class _PluginsController with Store {
   Future<int> tryUpdatePluginByName(String name) async {
     var pluginHTTPItem = await queryPluginHTTP(name);
     if (pluginHTTPItem != null) {
-      if (int.parse(pluginHTTPItem.api) > ApiEndpoints.apiLevel) {
+      if (pluginHTTPItem.requiresNewerClient) {
         return 1;
+      }
+      Plugin? local;
+      for (final p in pluginList) {
+        if (p.name == name) {
+          local = p;
+          break;
+        }
+      }
+      // Never downgrade an installed plugin; mirrors may lag behind upstream
+      if (local != null &&
+          !_remoteIsNewer(local.version, pluginHTTPItem.version)) {
+        return 3;
       }
       updatePlugin(pluginHTTPItem);
       return 0;

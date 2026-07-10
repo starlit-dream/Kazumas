@@ -1,12 +1,9 @@
-import 'package:kazumi/pages/bangumi/unified_bangumi_page.dart';
 import 'package:flutter_modular/flutter_modular.dart';
+import 'package:kazumi/pages/bangumi/unified_bangumi_page.dart';
 
-class BangumiModule extends Module {
-  @override
-  void binds(i) {}
-
-  @override
-  void routes(r) {
-    r.child("/", child: (_) => const UnifiedBangumiPage());
-  }
-}
+final bangumiModule = createModule(
+  path: '/bangumi',
+  register: (c) {
+    c.route('/', child: (context, state) => const UnifiedBangumiPage());
+  },
+);

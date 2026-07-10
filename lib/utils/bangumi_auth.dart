@@ -9,7 +9,7 @@ import 'package:kazumi/request/bangumi.dart';
 import 'package:kazumi/request/request.dart';
 import 'package:kazumi/utils/bangumi_oauth.dart';
 import 'package:kazumi/utils/storage.dart';
-import 'package:kazumi/utils/utils.dart';
+import 'package:kazumi/utils/http_headers.dart';
 
 class BangumiAuth {
   static const String _redirectUri = '${Api.bangumiIndex}dev/app';
@@ -241,7 +241,7 @@ class BangumiAuth {
       options: Options(
         contentType: Headers.formUrlEncodedContentType,
         headers: {
-          'user-agent': Utils.getRandomUA(),
+          'user-agent': getRandomUA(),
         },
       ),
       shouldRethrow: true,
@@ -382,7 +382,7 @@ class BangumiAuth {
       options: Options(
         contentType: Headers.formUrlEncodedContentType,
         headers: {
-          'user-agent': Utils.getRandomUA(),
+          'user-agent': getRandomUA(),
         },
       ),
       shouldRethrow: true,
@@ -477,7 +477,7 @@ class BangumiAuth {
         validateStatus: (_) => true,
         responseType: ResponseType.plain,
         headers: {
-          'user-agent': Utils.getRandomUA(),
+          'user-agent': getRandomUA(),
           'referer': '',
         },
       ),

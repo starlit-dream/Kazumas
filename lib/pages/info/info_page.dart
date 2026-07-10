@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:ui';
-import 'package:kazumi/utils/utils.dart';
+import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
+import 'package:kazumi/bean/dialog/dialog_helper.dart';
+import 'package:kazumi/pages/info/rating_review_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:hive_ce/hive.dart';
@@ -8,45 +10,59 @@ import 'package:kazumi/bean/widget/collect_button.dart';
 import 'package:kazumi/bean/widget/embedded_native_control_area.dart';
 import 'package:kazumi/bean/widget/progress_editor.dart';
 import 'package:kazumi/bean/widget/finish_review_sheet.dart';
-import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:kazumi/utils/constants.dart';
-import 'package:kazumi/utils/storage.dart';
 import 'package:kazumi/pages/history/history_controller.dart';
+import 'package:kazumi/pages/video/video_playback_args.dart';
+import 'package:kazumi/services/plugin/rule_engine_models.dart'
+    show RuleCancelToken;
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/pages/info/info_controller.dart';
 import 'package:kazumi/bean/card/bangumi_info_card.dart';
 import 'package:kazumi/pages/info/source_sheet.dart';
 import 'package:kazumi/modules/search/plugin_search_module.dart';
 import 'package:kazumi/plugins/plugins.dart';
 import 'package:kazumi/plugins/plugins_controller.dart';
-import 'package:kazumi/pages/video/video_controller.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
-import 'package:kazumi/utils/logger.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/pages/info/info_tabview.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/bean/appbar/drag_to_move_bar.dart' as dtb;
+import 'package:kazumi/utils/device.dart';
 
 class InfoPage extends StatefulWidget {
-  const InfoPage({super.key});
+  const InfoPage({
+    super.key,
+    required this.inputBangumiItem,
+    required this.infoController,
+    required this.pluginsController,
+  });
+
+  final BangumiItem inputBangumiItem;
+  final InfoController infoController;
+  final PluginsController pluginsController;
 
   @override
   State<InfoPage> createState() => _InfoPageState();
 }
 
 class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
+  static const List<String> _infoTabs = <String>[
+    '概览',
+    '吐槽',
+    '角色',
+    '评论',
+    '制作人员',
+  ];
+  static const int _commentsTabIndex = 1;
   static const Duration _minimumBangumiInfoLoadingDuration =
       Duration(milliseconds: 600);
 
-  /// Don't use modular singleton here. We may have multiple info pages.
-  /// Use a new instance of InfoController for each info page.
-  final InfoController infoController = InfoController();
-  final VideoPageController videoPageController =
-      Modular.get<VideoPageController>();
-  final PluginsController pluginsController = Modular.get<PluginsController>();
-  final Box setting = GStorage.setting;
+  InfoController get infoController => widget.infoController;
+  PluginsController get pluginsController => widget.pluginsController;
   late TabController sourceTabController;
   late TabController infoTabController;
   late bool showRating;
@@ -62,8 +78,9 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   bool staffQueryTimeout = false;
   bool staffIsEmpty = false;
   bool _showBangumiInfoSkeleton = false;
+  int _fabTabIndex = 0;
 
-  final inputBangumiIten = Modular.args.data as BangumiItem;
+  BangumiItem get inputBangumiIten => widget.inputBangumiItem;
 
   bool get _isShowingBangumiInfoSkeleton =>
       infoController.isLoading || _showBangumiInfoSkeleton;
@@ -133,7 +150,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     }
   }
 
-  Future<void> loadMoreComments({int offset = 0}) async {
+  Future<void> loadMoreComments({bool loadMore = false}) async {
     if (commentsIsLoading) return;
     setState(() {
       commentsIsLoading = true;
@@ -143,11 +160,13 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     try {
       await infoController.queryBangumiCommentsByID(
           infoController.bangumiItem.id,
-          offset: offset);
+          refresh: !loadMore);
       if (mounted) {
         setState(() {
           commentsIsLoading = false;
-          if (infoController.commentsList.isEmpty) {
+          if (infoController.commentsList.isEmpty &&
+              !(infoController.bangumiItem.interest?.hasReviewContent ??
+                  false)) {
             commentsIsEmpty = true;
           }
         });
@@ -163,18 +182,44 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     }
   }
 
+  void onBangumiRatingTap() {
+    final token =
+        GStorage.getSetting(SettingsKeys.bangumiAccessToken).toString().trim();
+    if (token.isEmpty) {
+      KazumiDialog.showToast(message: '请先在同步设置中绑定你的 Bangumi 配置以发表吐槽');
+      return;
+    }
+    final localType = infoController.collectController
+        .getCollectType(infoController.bangumiItem);
+    if (localType == 0) {
+      KazumiDialog.showToast(message: '请先追番后再发表评价');
+      return;
+    }
+    KazumiDialog.show(
+      builder: (context) => RatingReviewDialog(
+        bangumiItem: infoController.bangumiItem,
+        onSubmit: (data) async {
+          final updated =
+              await infoController.rateBangumi(data, localType: localType);
+          if (updated && mounted) {
+            setState(() {});
+          }
+          return updated;
+        },
+      ),
+    );
+  }
+
   @override
   void initState() {
     super.initState();
     infoController.bangumiItem = inputBangumiIten;
     infoController.characterList.clear();
-    infoController.commentsList.clear();
+    infoController.clearComments();
     infoController.staffList.clear();
     infoController.pluginSearchResponseList.clear();
-    videoPageController.currentEpisode = 1;
-    // Because the gap between different bangumi API response is too large, sometimes we need to query the bangumi info again
-    // We need the type parameter to determine whether to attach the new data to the old data
-    // We can't generally replace the old data with the new data, because the old data contains images url, update them will cause the image to reload and flicker
+    // Search results can miss rating distribution or summaries, so fill those
+    // fields without replacing image URLs that are already rendered.
     if (_needsBangumiInfoRefresh(infoController.bangumiItem)) {
       _showBangumiInfoSkeleton = true;
       queryBangumiInfoByID(
@@ -195,43 +240,80 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     }
     sourceTabController =
         TabController(length: pluginsController.pluginList.length, vsync: this);
-    infoTabController = TabController(length: 5, vsync: this);
-    showRating =
-        GStorage.setting.get(SettingBoxKey.showRating, defaultValue: true);
-    watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
-    infoTabController.addListener(() {
-      int index = infoTabController.index;
-      if (index == 1 &&
-          infoController.commentsList.isEmpty &&
-          !commentsIsLoading &&
-          !commentsIsEmpty &&
-          !commentsQueryTimeout) {
-        loadMoreComments();
-      }
-      if (index == 2 &&
-          infoController.characterList.isEmpty &&
-          !charactersIsLoading &&
-          !charactersIsEmpty &&
-          !charactersQueryTimeout) {
-        loadCharacters();
-      }
-      if (index == 4 &&
-          infoController.staffList.isEmpty &&
-          !staffIsLoading &&
-          !staffIsEmpty &&
-          !staffQueryTimeout) {
-        loadStaff();
-      }
+    infoTabController = TabController(length: _infoTabs.length, vsync: this);
+    _fabTabIndex = infoTabController.index;
+    showRating = GStorage.getSetting(SettingsKeys.showRating);
+    watchNow =
+        GStorage.setting.get(SettingBoxKey.watchNow, defaultValue: false);
+    infoTabController.addListener(onInfoTabChanged);
+    infoTabController.addListener(_syncFabTabIndex);
+    infoTabController.animation?.addListener(_syncFabTabIndex);
+  }
+
+  void onInfoTabChanged() {
+    final index = infoTabController.index;
+    if (index == 2 &&
+        infoController.characterList.isEmpty &&
+        !charactersIsLoading &&
+        !charactersIsEmpty &&
+        !charactersQueryTimeout) {
+      loadCharacters();
+    }
+    if (index == 4 &&
+        infoController.staffList.isEmpty &&
+        !staffIsLoading &&
+        !staffIsEmpty &&
+        !staffQueryTimeout) {
+      loadStaff();
+    }
+  }
+
+  void _syncFabTabIndex() {
+    final animation = infoTabController.animation;
+    final targetIndex = infoTabController.indexIsChanging
+        ? infoTabController.index
+        : (animation?.value.round() ?? infoTabController.index);
+    final nextIndex =
+        targetIndex.clamp(0, infoTabController.length - 1).toInt();
+
+    if (_fabTabIndex == nextIndex) {
+      return;
+    }
+    if (!mounted) {
+      return;
+    }
+    setState(() {
+      _fabTabIndex = nextIndex;
     });
+  }
+
+  Future<void> onCommentsTabSelected() async {
+    final interest = infoController.bangumiItem.interest;
+    final token =
+        GStorage.getSetting(SettingsKeys.bangumiAccessToken).toString().trim();
+    if (interest != null && token.isNotEmpty) {
+      final updated = await infoController.fillInterestUserProfileIfNeeded();
+      if (updated && mounted) {
+        setState(() {});
+      }
+    }
+    if (infoController.commentsList.isEmpty &&
+        !commentsIsLoading &&
+        !commentsIsEmpty &&
+        !commentsQueryTimeout) {
+      loadMoreComments();
+    }
   }
 
   @override
   void dispose() {
+    infoTabController.removeListener(onInfoTabChanged);
+    infoTabController.removeListener(_syncFabTabIndex);
+    infoTabController.animation?.removeListener(_syncFabTabIndex);
     infoController.characterList.clear();
-    infoController.commentsList.clear();
+    infoController.clearComments();
     infoController.staffList.clear();
     infoController.pluginSearchResponseList.clear();
-    videoPageController.currentEpisode = 1;
     sourceTabController.dispose();
     infoTabController.dispose();
     super.dispose();
@@ -311,7 +393,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
       await infoController.queryBangumiInfoByID(id, type: type);
     } catch (e) {
       KazumiLogger()
-          .e('InfoController: failed to query bangumi info by ID', error: e);
+          .e('InfoPage: failed to query bangumi info by ID', error: e);
     } finally {
       if (enforceMinimumLoadingDuration && mounted) {
         await _waitForMinimumBangumiInfoLoadingDuration(loadingStartedAt);
@@ -334,7 +416,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   }
 
   Future<void> _watchNow() async {
-    final historyController = Modular.get<HistoryController>();
+    final historyController = inject<HistoryController>();
     final pluginList = pluginsController.pluginList.toList();
     final keyword = infoController.bangumiItem.nameCn.isEmpty
         ? infoController.bangumiItem.name
@@ -387,28 +469,37 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     if (!mounted) return;
 
     KazumiDialog.dismiss();
+    final cancelToken = RuleCancelToken();
     KazumiDialog.showLoading(
       msg: '获取线路中...',
-      barrierDismissible: Utils.isDesktop(),
-      onDismiss: () {
-        videoPageController.cancelQueryRoads();
-      },
+      barrierDismissible: isDesktop(),
+      onDismiss: cancelToken.cancel,
     );
 
     final selected = bestResult;
     final plugin = pluginList.firstWhere((p) => p.name == selected.pluginName);
     final searchItem = selected.data.first;
 
-    videoPageController.bangumiItem = infoController.bangumiItem;
-    videoPageController.currentPlugin = plugin;
-    videoPageController.title = searchItem.name;
-    videoPageController.src = searchItem.src;
-
     try {
-      await videoPageController.queryRoads(searchItem.src, plugin.name);
+      final roads = await plugin.queryChapterRoads(
+        searchItem.src,
+        cancelToken: cancelToken,
+      );
+      if (roads.isEmpty) {
+        throw ChapterErrorException(plugin.name);
+      }
       KazumiDialog.dismiss();
       if (mounted) {
-        await Modular.to.pushNamed('/video/');
+        await context.pushNamed(
+          '/video/',
+          arguments: OnlineVideoPlaybackArgs(
+            bangumiItem: infoController.bangumiItem,
+            plugin: plugin,
+            title: searchItem.name,
+            src: searchItem.src,
+            roads: roads,
+          ),
+        );
       }
     } catch (_) {
       KazumiLogger().w('WatchNow: failed to query video playlist');
@@ -421,13 +512,13 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
 
   @override
   Widget build(BuildContext context) {
-    final List<String> tabs = <String>['概览', '吐槽', '角色', '评论', '制作人员'];
-    final bool showWindowButton = GStorage.setting
-        .get(SettingBoxKey.showWindowButton, defaultValue: false);
+    final bool showWindowButton =
+        GStorage.getSetting(SettingsKeys.showWindowButton);
+    final bool showRatingFab = _fabTabIndex == _commentsTabIndex;
     return PopScope(
       canPop: true,
       child: DefaultTabController(
-        length: tabs.length,
+        length: _infoTabs.length,
         child: Scaffold(
           body: NestedScrollView(
             headerSliverBuilder:
@@ -455,7 +546,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                     leading: EmbeddedNativeControlArea(
                       child: IconButton(
                         onPressed: () {
-                          Navigator.maybePop(context);
+                          context.maybePop();
                         },
                         icon: Icon(Icons.arrow_back),
                       ),
@@ -483,7 +574,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                           icon: const Icon(Icons.open_in_browser_rounded),
                         ),
                       ),
-                      if (!showWindowButton && Utils.isDesktop())
+                      if (!showWindowButton && isDesktop())
                         CloseButton(onPressed: () => windowManager.close()),
                       SizedBox(width: 8),
                     ],
@@ -537,8 +628,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                                           return BangumiInfoCardV(
                                             bangumiItem:
                                                 infoController.bangumiItem,
-                                            isLoading:
-                                                showBangumiInfoSkeleton,
+                                            isLoading: showBangumiInfoSkeleton,
                                             showRating: showRating,
                                             userRating:
                                                 infoController.userRating,
@@ -854,7 +944,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                       isScrollable: true,
                       tabAlignment: TabAlignment.center,
                       dividerHeight: 0,
-                      tabs: tabs.map((name) => Tab(text: name)).toList(),
+                      tabs: _infoTabs.map((name) => Tab(text: name)).toList(),
                     ),
                   ),
                 ),
@@ -875,6 +965,8 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                 loadCharacters: loadCharacters,
                 loadStaff: loadStaff,
                 commentsList: infoController.commentsList,
+                commentsIsLoading: commentsIsLoading,
+                onCommentsTabSelected: onCommentsTabSelected,
                 characterList: infoController.characterList,
                 staffList: infoController.staffList,
                 isLoading: showBangumiInfoSkeleton,
@@ -883,20 +975,28 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
               );
             }),
           ),
-          floatingActionButton: GestureDetector(
-            onLongPress: _showSourceSheet,
-            child: FloatingActionButton.extended(
-              icon: const Icon(Icons.play_arrow_rounded),
-              label: Text('开始观看'),
-              onPressed: () async {
-                if (watchNow) {
-                  await _watchNow();
-                  return;
-                }
-                _showSourceSheet();
-              },
-            ),
-          ),
+          floatingActionButton: showRatingFab
+              ? FloatingActionButton.extended(
+                  tooltip: '吐槽',
+                  onPressed: onBangumiRatingTap,
+                  label: const Text('发表吐槽'),
+                  icon: const Icon(Icons.rate_review_rounded),
+                )
+              : GestureDetector(
+                  onLongPress: _showSourceSheet,
+                  child: FloatingActionButton.extended(
+                    tooltip: '开始观看',
+                    onPressed: () async {
+                      if (watchNow) {
+                        await _watchNow();
+                        return;
+                      }
+                      _showSourceSheet();
+                    },
+                    label: const Text('开始观看'),
+                    icon: const Icon(Icons.play_arrow_rounded),
+                  ),
+                ),
         ),
       ),
     );

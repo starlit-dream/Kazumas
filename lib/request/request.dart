@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:dio/io.dart';
 import 'package:kazumi/request/interceptor.dart';
-import 'package:kazumi/utils/utils.dart';
-import 'package:kazumi/utils/storage.dart';
-import 'package:kazumi/utils/proxy_utils.dart';
-import 'package:kazumi/utils/logger.dart';
+import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/services/network/proxy_utils.dart';
+import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/utils/http_headers.dart';
 import 'package:hive_ce/hive.dart';
 
 class Request {
@@ -29,7 +29,7 @@ class Request {
   // 设置请求头
   static void setOptionsHeaders() {
     dio.options.headers['referer'] = '';
-    dio.options.headers['user-agent'] = Utils.getRandomUA();
+    dio.options.headers['user-agent'] = getRandomUA();
   }
 
   // 设置代理（仅支持 HTTP 代理）
@@ -70,11 +70,11 @@ class Request {
   // 禁用代理
   static void disableProxy() {
     dio.httpClientAdapter = IOHttpClientAdapter(
-        createHttpClient: () {
-          final HttpClient client = HttpClient();
-          return client;
-        },
-      );
+      createHttpClient: () {
+        final HttpClient client = HttpClient();
+        return client;
+      },
+    );
     KazumiLogger().i('Proxy: 代理已禁用');
   }
 
@@ -96,7 +96,7 @@ class Request {
 
     dio = Dio(options);
     // debugPrint('Dio 初始化完成');
-    
+
     // if (enableSystemProxy) {
     //   setProxy();
     //   debugPrint('系统代理启用');
@@ -146,7 +146,8 @@ class Request {
     }
   }
 
-  Future<Response> get(url, {data, options, cancelToken, extra, bool shouldRethrow = false}) async {
+  Future<Response> get(url,
+      {data, options, cancelToken, extra, bool shouldRethrow = false}) async {
     Response response;
     ResponseType resType = ResponseType.json;
     options ??= Options();
@@ -178,7 +179,13 @@ class Request {
     }
   }
 
-  Future<Response> post(url, {data, queryParameters, options, cancelToken, extra, bool shouldRethrow = false}) async {
+  Future<Response> post(url,
+      {data,
+      queryParameters,
+      options,
+      cancelToken,
+      extra,
+      bool shouldRethrow = false}) async {
     // print('post-data: $data');
     Response response;
     ResponseType resType = ResponseType.json;
@@ -213,7 +220,13 @@ class Request {
     }
   }
 
-  Future<Response> patch(url, {data, queryParameters, options, cancelToken, extra, bool shouldRethrow = false}) async {
+  Future<Response> patch(url,
+      {data,
+      queryParameters,
+      options,
+      cancelToken,
+      extra,
+      bool shouldRethrow = false}) async {
     Response response;
     options ??= Options();
     if (extra != null && extra['customError'] != null) {
@@ -241,7 +254,13 @@ class Request {
     }
   }
 
-  Future<Response> put(url, {data, queryParameters, options, cancelToken, extra, bool shouldRethrow = false}) async {
+  Future<Response> put(url,
+      {data,
+      queryParameters,
+      options,
+      cancelToken,
+      extra,
+      bool shouldRethrow = false}) async {
     Response response;
     options ??= Options();
     if (extra != null && extra['customError'] != null) {
@@ -270,6 +289,6 @@ class Request {
   }
 
   String headerUa({type = 'mob'}) {
-    return Utils.getRandomUA();
+    return getRandomUA();
   }
 }

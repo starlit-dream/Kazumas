@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show FilteringTextInputFormatter;
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
+import 'package:kazumi/pages/player/controller/player_aspect_ratio.dart';
 import 'package:kazumi/utils/constants.dart';
-import 'package:kazumi/utils/storage.dart';
-import 'package:kazumi/utils/pip_utils.dart';
+import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/player/pip_utils.dart';
 import 'package:card_settings_ui/card_settings_ui.dart';
-import 'package:kazumi/utils/utils.dart';
+import 'package:kazumi/utils/device.dart';
 
 class PlayerSettingsPage extends StatefulWidget {
   const PlayerSettingsPage({super.key});
@@ -19,10 +19,13 @@ class PlayerSettingsPage extends StatefulWidget {
 }
 
 class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
-  Box setting = GStorage.setting;
+  static const double _minPlayerControllerLayerDisappearSeconds = 1;
+  static const double _maxPlayerControllerLayerDisappearSeconds = 10;
+  static const int _playerControllerLayerDisappearDivisions = 18;
+
   late double defaultPlaySpeed;
   late double defaultShortcutForwardPlaySpeed;
-  late int defaultAspectRatioType;
+  late PlayerAspectRatio defaultAspectRatioMode;
   late bool hAenable;
   late bool androidEnableOpenSLES;
   late bool androidAutoEnterPIP;
@@ -40,48 +43,83 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
   late int playerButtonSkipTime;
   late int playerArrowKeySkipTime;
   late int playerLogLevel;
+  late int playerControllerLayerDisappearTime;
   final MenuController playerAspectRatioMenuController = MenuController();
   final MenuController playerLogLevelMenuController = MenuController();
 
   @override
   void initState() {
     super.initState();
+    _loadSettingsFromStorage();
+  }
+
+  void _loadSettingsFromStorage() {
     defaultPlaySpeed =
-        setting.get(SettingBoxKey.defaultPlaySpeed, defaultValue: 1.0);
-    defaultShortcutForwardPlaySpeed = setting
-        .get(SettingBoxKey.defaultShortcutForwardPlaySpeed, defaultValue: 2.0);
-    defaultAspectRatioType =
-        setting.get(SettingBoxKey.defaultAspectRatioType, defaultValue: 1);
-    hAenable = setting.get(SettingBoxKey.hAenable, defaultValue: true);
+        GStorage.getSetting<double>(SettingsKeys.defaultPlaySpeed);
+    defaultShortcutForwardPlaySpeed = GStorage.getSetting<double>(
+        SettingsKeys.defaultShortcutForwardPlaySpeed);
+    defaultAspectRatioMode = PlayerAspectRatio.fromStorageValue(
+      GStorage.getSetting<int>(SettingsKeys.defaultAspectRatioType),
+    );
+    hAenable = GStorage.getSetting<bool>(SettingsKeys.hAenable);
     androidEnableOpenSLES =
-        setting.get(SettingBoxKey.androidEnableOpenSLES, defaultValue: true);
+        GStorage.getSetting<bool>(SettingsKeys.androidEnableOpenSLES);
     androidAutoEnterPIP =
-        setting.get(SettingBoxKey.androidAutoEnterPIP, defaultValue: false);
-    lowMemoryMode =
-        setting.get(SettingBoxKey.lowMemoryMode, defaultValue: false);
-    playResume = setting.get(SettingBoxKey.playResume, defaultValue: true);
-    privateMode = setting.get(SettingBoxKey.privateMode, defaultValue: false);
-    showPlayerError =
-        setting.get(SettingBoxKey.showPlayerError, defaultValue: true);
-    playerDebugMode =
-        setting.get(SettingBoxKey.playerDebugMode, defaultValue: false);
-    autoPlayNext = setting.get(SettingBoxKey.autoPlayNext, defaultValue: true);
-    watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
+        GStorage.getSetting<bool>(SettingsKeys.androidAutoEnterPIP);
+    lowMemoryMode = GStorage.getSetting<bool>(SettingsKeys.lowMemoryMode);
+    playResume = GStorage.getSetting<bool>(SettingsKeys.playResume);
+    privateMode = GStorage.getSetting<bool>(SettingsKeys.privateMode);
+    showPlayerError = GStorage.getSetting<bool>(SettingsKeys.showPlayerError);
+    playerDebugMode = GStorage.getSetting<bool>(SettingsKeys.playerDebugMode);
+    autoPlayNext = GStorage.getSetting<bool>(SettingsKeys.autoPlayNext);
+    watchNow =
+        GStorage.setting.get(SettingBoxKey.watchNow, defaultValue: false);
     backgroundPlayback =
-        setting.get(SettingBoxKey.backgroundPlayback, defaultValue: false);
+        GStorage.getSetting<bool>(SettingsKeys.backgroundPlayback);
     playerDisableAnimations =
-        setting.get(SettingBoxKey.playerDisableAnimations, defaultValue: false);
-    forceAdBlocker =
-        setting.get(SettingBoxKey.forceAdBlocker, defaultValue: false);
-    playerLogLevel = setting.get(SettingBoxKey.playerLogLevel, defaultValue: 2);
+        GStorage.getSetting<bool>(SettingsKeys.playerDisableAnimations);
+    forceAdBlocker = GStorage.getSetting<bool>(SettingsKeys.forceAdBlocker);
+    playerLogLevel = GStorage.getSetting<int>(SettingsKeys.playerLogLevel);
 
     brightnessVolumeGesture =
-        setting.get(SettingBoxKey.brightnessVolumeGesture, defaultValue: true);
+        GStorage.getSetting<bool>(SettingsKeys.brightnessVolumeGesture);
 
     playerButtonSkipTime =
-        setting.get(SettingBoxKey.buttonSkipTime, defaultValue: 80);
+        GStorage.getSetting<int>(SettingsKeys.buttonSkipTime);
     playerArrowKeySkipTime =
-        setting.get(SettingBoxKey.arrowKeySkipTime, defaultValue: 10);
+        GStorage.getSetting<int>(SettingsKeys.arrowKeySkipTime);
+
+    playerControllerLayerDisappearTime = GStorage.getSetting<int>(
+        SettingsKeys.playerControllerLayerDisappearTime);
+  }
+
+  Future<void> resetPlayerSettings() async {
+    final bool shouldReset = await KazumiDialog.show<bool>(
+          builder: (context) => AlertDialog(
+            title: const Text('恢复默认播放设置'),
+            content: const Text('播放设置、硬件解码器、视频渲染器和超分辨率设置将恢复为默认值。'),
+            actions: [
+              TextButton(
+                onPressed: () => KazumiDialog.dismiss(popWith: false),
+                child: Text('取消'),
+              ),
+              TextButton(
+                onPressed: () => KazumiDialog.dismiss(popWith: true),
+                child: Text('恢复默认'),
+              ),
+            ],
+          ),
+        ) ??
+        false;
+    if (!shouldReset) return;
+
+    await GStorage.resetPlayerSettings();
+    if (Platform.isAndroid) {
+      await PipUtils.setAndroidAutoEnterPIPEnabled(false);
+    }
+    if (!mounted) return;
+    setState(_loadSettingsFromStorage);
+    KazumiDialog.showToast(message: '已恢复默认播放设置');
   }
 
   void onBackPressed(BuildContext context) {
@@ -92,41 +130,44 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
   }
 
   void updateDefaultPlaySpeed(double speed) {
-    setting.put(SettingBoxKey.defaultPlaySpeed, speed);
+    GStorage.putSetting<double>(SettingsKeys.defaultPlaySpeed, speed);
     setState(() {
       defaultPlaySpeed = speed;
     });
   }
 
   void updateDefaultShortcutForwardPlaySpeed(double speed) {
-    setting.put(SettingBoxKey.defaultShortcutForwardPlaySpeed, speed);
+    GStorage.putSetting<double>(
+        SettingsKeys.defaultShortcutForwardPlaySpeed, speed);
     setState(() {
       defaultShortcutForwardPlaySpeed = speed;
     });
   }
 
   void updatePlayerLogLevel(int level) {
-    setting.put(SettingBoxKey.playerLogLevel, level);
+    GStorage.putSetting<int>(SettingsKeys.playerLogLevel, level);
     setState(() {
       playerLogLevel = level;
     });
   }
 
-  void updateDefaultAspectRatioType(int type) {
-    setting.put(SettingBoxKey.defaultAspectRatioType, type);
+  void updateDefaultAspectRatioMode(PlayerAspectRatio mode) {
+    GStorage.putSetting<int>(
+      SettingsKeys.defaultAspectRatioType,
+      mode.storageValue,
+    );
     setState(() {
-      defaultAspectRatioType = type;
+      defaultAspectRatioMode = mode;
     });
   }
 
   Future<void> updateButtonSkipTime() async {
     final int? newButtonSkipTime = await _showSkipTimeChangeDialog(
         title: '顶部按钮快进时长', initialValue: playerButtonSkipTime.toString());
-    print('新设置的顶部按钮快进时长: $newButtonSkipTime');
 
     if (newButtonSkipTime != null &&
         newButtonSkipTime != playerButtonSkipTime) {
-      setting.put(SettingBoxKey.buttonSkipTime, newButtonSkipTime);
+      GStorage.putSetting<int>(SettingsKeys.buttonSkipTime, newButtonSkipTime);
       setState(() {
         playerButtonSkipTime = newButtonSkipTime;
       });
@@ -186,6 +227,32 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
     });
   }
 
+  double get playerControllerLayerDisappearSeconds =>
+      (playerControllerLayerDisappearTime / Duration.millisecondsPerSecond)
+          .clamp(_minPlayerControllerLayerDisappearSeconds,
+              _maxPlayerControllerLayerDisappearSeconds)
+          .toDouble();
+
+  String formatPlayerControllerLayerDisappearSeconds(double seconds) {
+    if (seconds == seconds.roundToDouble()) {
+      return '${seconds.toInt()} 秒';
+    }
+    return '${seconds.toStringAsFixed(1)} 秒';
+  }
+
+  void updatePlayerControllerLayerDisappearSeconds(double seconds) {
+    final int newDisappearTime =
+        (seconds * Duration.millisecondsPerSecond).round();
+    if (newDisappearTime == playerControllerLayerDisappearTime) {
+      return;
+    }
+    GStorage.putSetting<int>(
+        SettingsKeys.playerControllerLayerDisappearTime, newDisappearTime);
+    setState(() {
+      playerControllerLayerDisappearTime = newDisappearTime;
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final fontFamily = Theme.of(context).textTheme.bodyMedium?.fontFamily;
@@ -204,7 +271,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     hAenable = value ?? !hAenable;
-                    await setting.put(SettingBoxKey.hAenable, hAenable);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.hAenable, hAenable);
                     setState(() {});
                   },
                   title: Text('硬件解码', style: TextStyle(fontFamily: fontFamily)),
@@ -212,7 +280,7 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 ),
                 SettingsTile.navigation(
                   onPressed: (_) async {
-                    await Modular.to.pushNamed('/settings/player/decoder');
+                    await context.pushNamed('/settings/player/decoder');
                   },
                   title:
                       Text('硬件解码器', style: TextStyle(fontFamily: fontFamily)),
@@ -222,7 +290,7 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 if (Platform.isAndroid) ...[
                   SettingsTile.navigation(
                     onPressed: (_) async {
-                      await Modular.to.pushNamed('/settings/player/renderer');
+                      await context.pushNamed('/settings/player/renderer');
                     },
                     title:
                         Text('视频渲染器', style: TextStyle(fontFamily: fontFamily)),
@@ -233,8 +301,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     lowMemoryMode = value ?? !lowMemoryMode;
-                    await setting.put(
-                        SettingBoxKey.lowMemoryMode, lowMemoryMode);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.lowMemoryMode, lowMemoryMode);
                     setState(() {});
                   },
                   title:
@@ -247,7 +315,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                   SettingsTile.switchTile(
                     onToggle: (value) async {
                       androidEnableOpenSLES = value ?? !androidEnableOpenSLES;
-                      await setting.put(SettingBoxKey.androidEnableOpenSLES,
+                      await GStorage.putSetting<bool>(
+                          SettingsKeys.androidEnableOpenSLES,
                           androidEnableOpenSLES);
                       setState(() {});
                     },
@@ -260,7 +329,7 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 ],
                 SettingsTile.navigation(
                   onPressed: (_) async {
-                    Modular.to.pushNamed('/settings/player/super');
+                    context.pushNamed('/settings/player/super');
                   },
                   title: Text('超分辨率', style: TextStyle(fontFamily: fontFamily)),
                 ),
@@ -271,8 +340,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     backgroundPlayback = value ?? !backgroundPlayback;
-                    await setting.put(
-                        SettingBoxKey.backgroundPlayback, backgroundPlayback);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.backgroundPlayback, backgroundPlayback);
                     setState(() {});
                   },
                   title: Text('后台播放', style: TextStyle(fontFamily: fontFamily)),
@@ -283,7 +352,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     playResume = value ?? !playResume;
-                    await setting.put(SettingBoxKey.playResume, playResume);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.playResume, playResume);
                     setState(() {});
                   },
                   title: Text('自动跳转', style: TextStyle(fontFamily: fontFamily)),
@@ -294,7 +364,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     watchNow = value ?? !watchNow;
-                    await setting.put(SettingBoxKey.watchNow, watchNow);
+                    await GStorage.setting
+                        .put(SettingBoxKey.watchNow, watchNow);
                     setState(() {});
                   },
                   title: Text('立即观看', style: TextStyle(fontFamily: fontFamily)),
@@ -305,7 +376,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     autoPlayNext = value ?? !autoPlayNext;
-                    await setting.put(SettingBoxKey.autoPlayNext, autoPlayNext);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.autoPlayNext, autoPlayNext);
                     setState(() {});
                   },
                   title: Text('自动连播', style: TextStyle(fontFamily: fontFamily)),
@@ -317,7 +389,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                   SettingsTile.switchTile(
                     onToggle: (value) async {
                       androidAutoEnterPIP = value ?? !androidAutoEnterPIP;
-                      await setting.put(SettingBoxKey.androidAutoEnterPIP,
+                      await GStorage.putSetting<bool>(
+                          SettingsKeys.androidAutoEnterPIP,
                           androidAutoEnterPIP);
                       await PipUtils.setAndroidAutoEnterPIPEnabled(
                           androidAutoEnterPIP);
@@ -332,8 +405,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     forceAdBlocker = value ?? !forceAdBlocker;
-                    await setting.put(
-                        SettingBoxKey.forceAdBlocker, forceAdBlocker);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.forceAdBlocker, forceAdBlocker);
                     setState(() {});
                   },
                   title: Text('广告过滤', style: TextStyle(fontFamily: fontFamily)),
@@ -344,7 +417,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     playerDisableAnimations = value ?? !playerDisableAnimations;
-                    await setting.put(SettingBoxKey.playerDisableAnimations,
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.playerDisableAnimations,
                         playerDisableAnimations);
                     setState(() {});
                   },
@@ -353,12 +427,13 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                       style: TextStyle(fontFamily: fontFamily)),
                   initialValue: playerDisableAnimations,
                 ),
-                if (!Utils.isDesktop())
+                if (!isDesktop())
                   SettingsTile.switchTile(
                     onToggle: (value) async {
                       brightnessVolumeGesture =
                           value ?? !brightnessVolumeGesture;
-                      await setting.put(SettingBoxKey.brightnessVolumeGesture,
+                      await GStorage.putSetting<bool>(
+                          SettingsKeys.brightnessVolumeGesture,
                           brightnessVolumeGesture);
                       setState(() {});
                     },
@@ -371,7 +446,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     privateMode = value ?? !privateMode;
-                    await setting.put(SettingBoxKey.privateMode, privateMode);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.privateMode, privateMode);
                     setState(() {});
                   },
                   title: Text('隐身模式', style: TextStyle(fontFamily: fontFamily)),
@@ -386,8 +462,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     showPlayerError = value ?? !showPlayerError;
-                    await setting.put(
-                        SettingBoxKey.showPlayerError, showPlayerError);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.showPlayerError, showPlayerError);
                     setState(() {});
                   },
                   title: Text('错误提示', style: TextStyle(fontFamily: fontFamily)),
@@ -398,8 +474,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                 SettingsTile.switchTile(
                   onToggle: (value) async {
                     playerDebugMode = value ?? !playerDebugMode;
-                    await setting.put(
-                        SettingBoxKey.playerDebugMode, playerDebugMode);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.playerDebugMode, playerDebugMode);
                     setState(() {});
                   },
                   title: Text('调试模式', style: TextStyle(fontFamily: fontFamily)),
@@ -469,8 +545,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                   ),
                 ),
                 SettingsTile(
-                  title:
-                      Text('默认方向键倍速', style: TextStyle(fontFamily: fontFamily)),
+                  title: Text('默认方向键/长按倍速',
+                      style: TextStyle(fontFamily: fontFamily)),
                   description: Slider(
                     value: defaultShortcutForwardPlaySpeed,
                     min: 1.25,
@@ -492,11 +568,10 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                     label: '$playerArrowKeySkipTime秒',
                     onChanged: (value) {
                       final newArrowKeySkipTime = value.toInt();
-                      print('新设置的方向键快进/快退时长: $newArrowKeySkipTime');
 
                       if (value != playerArrowKeySkipTime) {
-                        setting.put(SettingBoxKey.arrowKeySkipTime,
-                            newArrowKeySkipTime);
+                        GStorage.putSetting<int>(
+                            SettingsKeys.arrowKeySkipTime, newArrowKeySkipTime);
                         setState(() {
                           playerArrowKeySkipTime = newArrowKeySkipTime;
                         });
@@ -516,6 +591,20 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                   value: Text('$playerButtonSkipTime 秒',
                       style: TextStyle(fontFamily: fontFamily)),
                 ),
+                SettingsTile(
+                  title: Text(
+                      '播放控制器消失时间：${formatPlayerControllerLayerDisappearSeconds(playerControllerLayerDisappearSeconds)}',
+                      style: TextStyle(fontFamily: fontFamily)),
+                  description: Slider(
+                    value: playerControllerLayerDisappearSeconds,
+                    min: _minPlayerControllerLayerDisappearSeconds,
+                    max: _maxPlayerControllerLayerDisappearSeconds,
+                    divisions: _playerControllerLayerDisappearDivisions,
+                    label: formatPlayerControllerLayerDisappearSeconds(
+                        playerControllerLayerDisappearSeconds),
+                    onChanged: updatePlayerControllerLayerDisappearSeconds,
+                  ),
+                ),
                 SettingsTile.navigation(
                   onPressed: (_) async {
                     if (playerAspectRatioMenuController.isOpen) {
@@ -531,25 +620,26 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                     controller: playerAspectRatioMenuController,
                     builder: (_, __, ___) {
                       return Text(
-                        aspectRatioTypeMap[defaultAspectRatioType] ?? '自动',
+                        defaultAspectRatioMode.label,
                         style: TextStyle(fontFamily: fontFamily),
                       );
                     },
                     menuChildren: [
-                      for (final entry in aspectRatioTypeMap.entries)
+                      for (final aspectRatioMode in PlayerAspectRatio.values)
                         MenuItemButton(
                           requestFocusOnHover: false,
                           onPressed: () =>
-                              updateDefaultAspectRatioType(entry.key),
+                              updateDefaultAspectRatioMode(aspectRatioMode),
                           child: Container(
                             height: 48,
                             constraints: BoxConstraints(minWidth: 112),
                             child: Align(
                               alignment: Alignment.centerLeft,
                               child: Text(
-                                entry.value,
+                                aspectRatioMode.label,
                                 style: TextStyle(
-                                  color: entry.key == defaultAspectRatioType
+                                  color: aspectRatioMode ==
+                                          defaultAspectRatioMode
                                       ? Theme.of(context).colorScheme.primary
                                       : null,
                                   fontFamily: fontFamily,
@@ -560,6 +650,17 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                         ),
                     ],
                   ),
+                ),
+              ],
+            ),
+            SettingsSection(
+              tiles: [
+                SettingsTile.navigation(
+                  onPressed: (_) => resetPlayerSettings(),
+                  title:
+                      Text('恢复默认设置', style: TextStyle(fontFamily: fontFamily)),
+                  description: Text('将播放相关设置恢复为默认值',
+                      style: TextStyle(fontFamily: fontFamily)),
                 ),
               ],
             ),

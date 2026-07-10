@@ -5,25 +5,28 @@ import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/bean/widget/error_widget.dart';
 import 'package:kazumi/plugins/plugins_controller.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
-import 'package:hive_ce/hive.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/storage/storage.dart';
 
 class PluginShopPage extends StatefulWidget {
-  const PluginShopPage({super.key});
+  const PluginShopPage({
+    super.key,
+    required this.controller,
+  });
+
+  final PluginsController controller;
 
   @override
   State<PluginShopPage> createState() => _PluginShopPageState();
 }
 
 class _PluginShopPageState extends State<PluginShopPage> {
-  Box setting = GStorage.setting;
   bool timeout = false;
   bool loading = false;
   late bool enableGitProxy;
 
   // 排序方式状态：false=按更新时间排序，true=按名称排序
   bool sortByName = false;
-  final PluginsController pluginsController = Modular.get<PluginsController>();
+  PluginsController get pluginsController => widget.controller;
 
   void onBackPressed(BuildContext context) {
     if (KazumiDialog.observer.hasKazumiDialog) {
@@ -35,8 +38,7 @@ class _PluginShopPageState extends State<PluginShopPage> {
   @override
   void initState() {
     super.initState();
-    enableGitProxy =
-        setting.get(SettingBoxKey.enableGitProxy, defaultValue: false);
+    enableGitProxy = GStorage.getSetting(SettingsKeys.enableGitProxy);
   }
 
   // 刷新规则列表
@@ -46,8 +48,7 @@ class _PluginShopPageState extends State<PluginShopPage> {
         loading = true;
         timeout = false;
       });
-      enableGitProxy =
-          setting.get(SettingBoxKey.enableGitProxy, defaultValue: false);
+      enableGitProxy = GStorage.getSetting(SettingsKeys.enableGitProxy);
       pluginsController.queryPluginHTTPList().then((_) {
         setState(() {
           loading = false;
@@ -115,23 +116,7 @@ class _PluginShopPageState extends State<PluginShopPage> {
                                 color: Theme.of(context).colorScheme.surface),
                           ),
                         ),
-                        const SizedBox(width: 5),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 8.0, vertical: 1.0),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            borderRadius: BorderRadius.circular(16.0),
-                          ),
-                          child: Text(
-                            sortedList[index].useNativePlayer
-                                ? "native"
-                                : "webview",
-                            style: TextStyle(
-                                color: Theme.of(context).colorScheme.surface),
-                          ),
-                        ),
-                        if (sortedList[index].antiCrawlerEnabled) ...[  
+                        if (sortedList[index].antiCrawlerEnabled) ...[
                           const SizedBox(width: 5),
                           Container(
                             padding: const EdgeInsets.symmetric(
@@ -143,9 +128,8 @@ class _PluginShopPageState extends State<PluginShopPage> {
                             child: Text(
                               'captcha',
                               style: TextStyle(
-                                  color: Theme.of(context)
-                                      .colorScheme
-                                      .onTertiary),
+                                  color:
+                                      Theme.of(context).colorScheme.onTertiary),
                             ),
                           ),
                         ],
@@ -172,7 +156,8 @@ class _PluginShopPageState extends State<PluginShopPage> {
                         setState(() {});
                       } else if (res == 1) {
                         KazumiDialog.showToast(
-                            message: 'kazumi版本过低, 此规则不兼容当前版本');
+                          message: '规则需要更高版本客户端',
+                        );
                       } else if (res == 2) {
                         KazumiDialog.showToast(message: '导入规则失败');
                       }
@@ -187,9 +172,12 @@ class _PluginShopPageState extends State<PluginShopPage> {
                         setState(() {});
                       } else if (res == 1) {
                         KazumiDialog.showToast(
-                            message: 'kazumi版本过低, 此规则不兼容当前版本');
+                          message: '规则需要更高版本客户端',
+                        );
                       } else if (res == 2) {
                         KazumiDialog.showToast(message: '更新规则失败');
+                      } else if (res == 3) {
+                        KazumiDialog.showToast(message: '远程规则版本不高于本地, 已跳过更新');
                       }
                     }
                   },
@@ -211,13 +199,14 @@ class _PluginShopPageState extends State<PluginShopPage> {
   Widget get timeoutWidget {
     return Center(
       child: GeneralErrorWidget(
-        errMsg: '啊咧（⊙.⊙） 无法访问远程仓库\n${enableGitProxy ? '镜像已启用' : '镜像已禁用'}',
+        errMsg:
+            '啊咧（⊙.⊙） 无法访问规则仓库\n${enableGitProxy ? '规则仓库镜像已启用' : '规则仓库镜像已禁用'}',
         actions: [
           GeneralErrorButton(
             onPressed: () {
-              Modular.to.pushNamed('/settings/webdav/');
+              context.pushNamed('/settings/webdav/');
             },
-            text: enableGitProxy ? '禁用镜像' : '启用镜像',
+            text: enableGitProxy ? '禁用规则镜像' : '启用规则镜像',
           ),
           GeneralErrorButton(
             onPressed: () {

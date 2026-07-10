@@ -1,5 +1,5 @@
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
-import 'package:kazumi/utils/utils.dart';
+import 'package:kazumi/utils/date_time.dart';
 
 class BangumiAuthUser {
   final String username;
@@ -128,7 +128,7 @@ class BangumiAuthCollectionSubject {
       nameCn: nameCn,
       summary: summary,
       airDate: date,
-      airWeekday: Utils.dateStringToWeekday(date.isEmpty ? '2000-11-11' : date),
+      airWeekday: dateStringToWeekday(date.isEmpty ? '2000-11-11' : date),
       rank: rank,
       images: images,
       tags: const [],

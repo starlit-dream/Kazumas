@@ -7,12 +7,20 @@ class DanmakuShieldSettingsSheet extends StatefulWidget {
   const DanmakuShieldSettingsSheet({super.key});
 
   @override
-  State<DanmakuShieldSettingsSheet> createState() => _DanmakuShieldSettingsSheetState();
+  State<DanmakuShieldSettingsSheet> createState() =>
+      _DanmakuShieldSettingsSheetState();
 }
 
-class _DanmakuShieldSettingsSheetState extends State<DanmakuShieldSettingsSheet> {
-  final MyController myController = Modular.get<MyController>();
+class _DanmakuShieldSettingsSheetState
+    extends State<DanmakuShieldSettingsSheet> {
+  final MyController myController = inject<MyController>();
   final TextEditingController textEditingController = TextEditingController();
+
+  @override
+  void dispose() {
+    textEditingController.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {

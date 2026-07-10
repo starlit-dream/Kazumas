@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
-import 'package:kazumi/utils/utils.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
+import 'package:kazumi/utils/device.dart';
 
 /// 时间线番剧卡片
 class BangumiTimelineCard extends StatelessWidget {
@@ -25,8 +25,8 @@ class BangumiTimelineCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDesktop = Utils.isDesktop();
-    final isTablet = Utils.isTablet();
+    final desktopLayout = isDesktop();
+    final tabletLayout = isTablet();
     final theme = Theme.of(context);
     final textScaler = MediaQuery.textScalerOf(context);
     final colorScheme = theme.colorScheme;
@@ -50,7 +50,7 @@ class BangumiTimelineCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(borderRadius),
         onTap: onTap ??
             () {
-              Modular.to.pushNamed('/info/', arguments: bangumiItem);
+              context.pushNamed('/info/', arguments: bangumiItem);
             },
         child: SizedBox(
           height: cardHeight,
@@ -71,7 +71,8 @@ class BangumiTimelineCard extends StatelessWidget {
                 ),
                 const SizedBox(width: 12),
                 Expanded(
-                  child: buildInfo(context, textScaler, isDesktop, isTablet),
+                  child: buildInfo(
+                      context, textScaler, desktopLayout, tabletLayout),
                 ),
               ],
             ),

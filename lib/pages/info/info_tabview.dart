@@ -5,14 +5,13 @@ import 'package:kazumi/bean/widget/error_widget.dart';
 import 'package:kazumi/bean/card/comments_card.dart';
 import 'package:kazumi/bean/card/character_card.dart';
 import 'package:kazumi/bean/card/staff_card.dart';
-import 'package:kazumi/bean/card/network_img_layer.dart';
-import 'package:kazumi/utils/utils.dart';
 import 'package:skeletonizer/skeletonizer.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/subject_relation.dart';
 import 'package:kazumi/modules/comments/comment_item.dart';
 import 'package:kazumi/modules/characters/character_item.dart';
 import 'package:kazumi/modules/staff/staff_item.dart';
+import 'package:kazumi/utils/device.dart';
 
 class InfoTabView extends StatefulWidget {
   const InfoTabView({
@@ -29,21 +28,25 @@ class InfoTabView extends StatefulWidget {
     required this.loadStaff,
     required this.bangumiItem,
     required this.commentsList,
+    required this.commentsIsLoading,
+    this.onCommentsTabSelected,
     required this.characterList,
     required this.staffList,
     required this.isLoading,
-    this.relatedSubjectList = const [],
-    this.relatedSubjectsLoading = false,
+    required this.relatedSubjectList,
+    required this.relatedSubjectsLoading,
   });
 
   final bool commentsQueryTimeout;
   final bool commentsIsEmpty;
+  final bool commentsIsLoading;
+  final VoidCallback? onCommentsTabSelected;
   final bool charactersQueryTimeout;
   final bool charactersIsEmpty;
   final bool staffQueryTimeout;
   final bool staffIsEmpty;
   final TabController tabController;
-  final Future<void> Function({int offset}) loadMoreComments;
+  final Future<void> Function({bool loadMore}) loadMoreComments;
   final Future<void> Function() loadCharacters;
   final Future<void> Function() loadStaff;
   final BangumiItem bangumiItem;
@@ -63,6 +66,27 @@ class _InfoTabViewState extends State<InfoTabView>
   final maxWidth = 950.0;
   bool fullIntro = false;
   bool fullTag = false;
+
+  @override
+  void initState() {
+    super.initState();
+    widget.tabController.addListener(_onTabChanged);
+    if (widget.tabController.index == 1) {
+      widget.onCommentsTabSelected?.call();
+    }
+  }
+
+  @override
+  void dispose() {
+    widget.tabController.removeListener(_onTabChanged);
+    super.dispose();
+  }
+
+  void _onTabChanged() {
+    if (widget.tabController.index == 1) {
+      widget.onCommentsTabSelected?.call();
+    }
+  }
 
   Widget get infoBody {
     return Center(
@@ -129,7 +153,7 @@ class _InfoTabViewState extends State<InfoTabView>
               const SizedBox(height: 8),
               Wrap(
                 spacing: 8.0,
-                runSpacing: Utils.isDesktop() ? 8 : 0,
+                runSpacing: isDesktop() ? 8 : 0,
                 children: List<Widget>.generate(
                     fullTag || widget.bangumiItem.tags.length < 13
                         ? widget.bangumiItem.tags.length
@@ -162,181 +186,45 @@ class _InfoTabViewState extends State<InfoTabView>
                       ],
                     ),
                     onPressed: () {
-                      Modular.to.pushNamed(
-                          '/search/${widget.bangumiItem.tags[index].name}');
+                      final tagName = Uri.encodeComponent(
+                          widget.bangumiItem.tags[index].name);
+                      context.pushNamed('/search/$tagName');
                     },
                   );
                 }).toList(),
               ),
-              relatedSubjectsBody,
+              if (widget.relatedSubjectsLoading ||
+                  widget.relatedSubjectList.isNotEmpty) ...[
+                const SizedBox(height: 24),
+                const Text('关联条目', style: TextStyle(fontSize: 18)),
+                const SizedBox(height: 8),
+                if (widget.relatedSubjectsLoading &&
+                    widget.relatedSubjectList.isEmpty)
+                  const LinearProgressIndicator()
+                else
+                  Card(
+                    child: Column(
+                      children: [
+                        for (final relation in widget.relatedSubjectList)
+                          ListTile(
+                            title: Text(
+                              relation.nameCn.isEmpty
+                                  ? relation.name
+                                  : relation.nameCn,
+                            ),
+                            subtitle: relation.nameCn.isEmpty
+                                ? null
+                                : Text(relation.name),
+                            trailing: Text(relation.relation),
+                          ),
+                      ],
+                    ),
+                  ),
+              ],
             ],
           ),
         ),
       ),
-    );
-  }
-
-  Widget get relatedSubjectsBody {
-    if (widget.relatedSubjectList.isEmpty && !widget.relatedSubjectsLoading) {
-      return const SizedBox.shrink();
-    }
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Icon(
-              Icons.link_rounded,
-              size: 20,
-              color: Theme.of(context).colorScheme.primary,
-            ),
-            const SizedBox(width: 8),
-            Text(
-              '相关番剧',
-              style: TextStyle(
-                fontSize: 18,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-        const SizedBox(height: 12),
-        if (widget.relatedSubjectsLoading)
-          SizedBox(
-            height: 220,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: 4,
-              itemBuilder: (context, index) {
-                return Container(
-                  width: 130,
-                  margin: const EdgeInsets.only(right: 12),
-                  child: Skeletonizer.zone(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 130,
-                          height: 173,
-                          decoration: BoxDecoration(
-                            color: Theme.of(context)
-                                .colorScheme
-                                .onInverseSurface
-                                .withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Bone.text(width: 80),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          )
-        else
-          SizedBox(
-            height: 220,
-            child: ListView.builder(
-              scrollDirection: Axis.horizontal,
-              itemCount: widget.relatedSubjectList.length,
-              itemBuilder: (context, index) {
-                final relation = widget.relatedSubjectList[index];
-                final displayName = relation.nameCn.isNotEmpty
-                    ? relation.nameCn
-                    : relation.name;
-                return GestureDetector(
-                  onTap: () {
-                    final bangumiItem = BangumiItem(
-                      id: relation.id,
-                      type: relation.type,
-                      name: relation.name,
-                      nameCn: relation.nameCn,
-                      summary: '',
-                      airDate: '',
-                      airWeekday: 0,
-                      rank: 0,
-                      images: {
-                        'large': relation.image,
-                        'common': '',
-                        'medium': '',
-                        'small': '',
-                        'grid': '',
-                      },
-                      tags: [],
-                      alias: [],
-                      ratingScore: 0,
-                      votes: 0,
-                      votesCount: [],
-                      info: '',
-                    );
-                    Modular.to.pushNamed('/info/', arguments: bangumiItem);
-                  },
-                  child: Container(
-                    width: 130,
-                    margin: const EdgeInsets.only(right: 12),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        ClipRRect(
-                          borderRadius: BorderRadius.circular(12),
-                          child: Stack(
-                            children: [
-                              NetworkImgLayer(
-                                src: relation.image,
-                                width: 130,
-                                height: 173,
-                              ),
-                              Positioned(
-                                top: 6,
-                                left: 6,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Theme.of(context)
-                                        .colorScheme
-                                        .primary
-                                        .withValues(alpha: 0.9),
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    relation.relation,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Theme.of(context)
-                                          .colorScheme
-                                          .onPrimary,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          displayName,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ),
-                  ),
-                );
-              },
-            ),
-          ),
-      ],
     );
   }
 
@@ -381,7 +269,7 @@ class _InfoTabViewState extends State<InfoTabView>
           onNotification: (scrollEnd) {
             final metrics = scrollEnd.metrics;
             if (metrics.pixels >= metrics.maxScrollExtent - 200) {
-              widget.loadMoreComments(offset: widget.commentsList.length);
+              widget.loadMoreComments(loadMore: widget.commentsList.isNotEmpty);
             }
             return true;
           },
@@ -396,11 +284,35 @@ class _InfoTabViewState extends State<InfoTabView>
                     NestedScrollView.sliverOverlapAbsorberHandleFor(context),
               ),
               SliverLayoutBuilder(builder: (context, _) {
-                if (widget.commentsList.isNotEmpty) {
+                final myInterest = widget.bangumiItem.interest;
+                final showMyReview = !widget.commentsIsLoading &&
+                    myInterest != null &&
+                    myInterest.hasUserProfile &&
+                    myInterest.hasReviewContent;
+                final listItemCount =
+                    widget.commentsList.length + (showMyReview ? 1 : 0);
+
+                if (listItemCount > 0) {
                   return SliverList.separated(
                     addAutomaticKeepAlives: false,
-                    itemCount: widget.commentsList.length,
+                    itemCount: listItemCount,
                     itemBuilder: (context, index) {
+                      final commentIndex = showMyReview ? index - 1 : index;
+                      final myUser = myInterest?.user;
+                      final card = showMyReview && index == 0 && myUser != null
+                          ? CommentsCard.own(
+                              commentItem: CommentItem(
+                                user: myUser,
+                                comment: Comment(
+                                  rate: myInterest.rate,
+                                  comment: myInterest.comment,
+                                  updatedAt: myInterest.updatedAt,
+                                ),
+                              ),
+                            )
+                          : CommentsCard(
+                              commentItem: widget.commentsList[commentIndex],
+                            );
                       return SafeArea(
                         top: false,
                         bottom: false,
@@ -412,9 +324,7 @@ class _InfoTabViewState extends State<InfoTabView>
                               width: MediaQuery.sizeOf(context).width > maxWidth
                                   ? maxWidth
                                   : MediaQuery.sizeOf(context).width - 32,
-                              child: CommentsCard(
-                                commentItem: widget.commentsList[index],
-                              ),
+                              child: card,
                             ),
                           ),
                         ),
@@ -449,7 +359,7 @@ class _InfoTabViewState extends State<InfoTabView>
                         GeneralErrorButton(
                           onPressed: () {
                             widget.loadMoreComments(
-                                offset: widget.commentsList.length);
+                                loadMore: widget.commentsList.isNotEmpty);
                           },
                           text: '重试',
                         ),

@@ -6,18 +6,20 @@ import 'package:kazumi/modules/collect/collect_module.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/utils/constants.dart';
-import 'package:kazumi/pages/menu/menu.dart';
 import 'package:kazumi/bean/card/bangumi_card.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
-import 'package:provider/provider.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:kazumi/modules/collect/collect_sync_plan.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/storage/storage.dart';
 
 class CollectPage extends StatefulWidget {
-  const CollectPage({super.key});
+  const CollectPage({
+    super.key,
+    required this.controller,
+  });
+
+  final CollectController controller;
 
   @override
   State<CollectPage> createState() => _CollectPageState();
@@ -25,76 +27,35 @@ class CollectPage extends StatefulWidget {
 
 class _CollectPageState extends State<CollectPage>
     with SingleTickerProviderStateMixin {
-  final CollectController collectController = Modular.get<CollectController>();
-  late NavigationBarState navigationBarState;
+  CollectController get collectController => widget.controller;
   TabController? tabController;
   bool showDelete = false;
   bool syncCollectiblesing = false;
-  Box setting = GStorage.setting;
 
   Future<bool> _syncBangumiWithProgress({
-    required ValueNotifier<double?> progressValue,
-    required ValueNotifier<String> progressText,
+    required GlobalKey<_FullSyncProgressDialogState> progressDialogKey,
   }) async {
-    progressText.value = '准备同步 Bangumi 收藏...';
-    progressValue.value = null;
+    progressDialogKey.currentState?.update('准备同步 Bangumi 收藏...', null);
 
     await Future<void>.delayed(const Duration(milliseconds: 80));
 
     return collectController.syncCollectiblesBangumi(
       showSuccessToast: false,
       onProgress: (message, current, total) {
-        progressText.value = total > 0 ? '$message ($current/$total)' : message;
-        if (total > 0) {
-          progressValue.value = (current / total).clamp(0.0, 1.0);
-        } else {
-          progressValue.value = null;
-        }
+        progressDialogKey.currentState?.update(
+          total > 0 ? '$message ($current/$total)' : message,
+          total > 0 ? (current / total).clamp(0.0, 1.0).toDouble() : null,
+        );
       },
     );
   }
 
   void _showFullSyncProgressDialog({
-    required ValueNotifier<double?> progressValue,
-    required ValueNotifier<String> progressText,
+    required GlobalKey<_FullSyncProgressDialogState> progressDialogKey,
   }) {
     unawaited(KazumiDialog.show(
       clickMaskDismiss: false,
-      builder: (context) {
-        return PopScope(
-          canPop: false,
-          child: Dialog(
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: SizedBox(
-                width: 340,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const Text(
-                      '收藏全量同步中',
-                      style:
-                          TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-                    ),
-                    const SizedBox(height: 12),
-                    ValueListenableBuilder<String>(
-                      valueListenable: progressText,
-                      builder: (_, value, __) => Text(value),
-                    ),
-                    const SizedBox(height: 12),
-                    ValueListenableBuilder<double?>(
-                      valueListenable: progressValue,
-                      builder: (_, value, __) =>
-                          LinearProgressIndicator(value: value),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        );
-      },
+      builder: (context) => _FullSyncProgressDialog(key: progressDialogKey),
     ));
   }
 
@@ -123,13 +84,10 @@ class _CollectPageState extends State<CollectPage>
   Future<void> _runFullSync({
     required CollectSyncPlan plan,
   }) async {
-    final ValueNotifier<double?> progressValue = ValueNotifier<double?>(null);
-    final ValueNotifier<String> progressText =
-        ValueNotifier<String>('准备开始同步收藏...');
+    final progressDialogKey = GlobalKey<_FullSyncProgressDialogState>();
 
     _showFullSyncProgressDialog(
-      progressValue: progressValue,
-      progressText: progressText,
+      progressDialogKey: progressDialogKey,
     );
 
     await Future<void>.delayed(const Duration(milliseconds: 80));
@@ -140,16 +98,14 @@ class _CollectPageState extends State<CollectPage>
 
     try {
       if (plan.shouldSyncWebDavCollectibles) {
-        progressText.value = '正在同步 WebDav 收藏...';
-        progressValue.value = null;
+        progressDialogKey.currentState?.update('正在同步 WebDav 收藏...', null);
         webDavSynced =
             await collectController.syncCollectibles(showSuccessToast: false);
       }
 
       if (plan.shouldSyncBangumi) {
         bangumiSynced = await _syncBangumiWithProgress(
-          progressValue: progressValue,
-          progressText: progressText,
+          progressDialogKey: progressDialogKey,
         );
       }
 
@@ -157,8 +113,7 @@ class _CollectPageState extends State<CollectPage>
         webDavSynced: webDavSynced,
         bangumiSynced: bangumiSynced,
       )) {
-        progressText.value = '正在回传最新收藏到 WebDav...';
-        progressValue.value = null;
+        progressDialogKey.currentState?.update('正在回传最新收藏到 WebDav...', null);
         webDavUploaded = await collectController.uploadCollectiblesToWebDav(
           showSuccessToast: false,
         );
@@ -167,8 +122,6 @@ class _CollectPageState extends State<CollectPage>
       if (KazumiDialog.observer.hasKazumiDialog) {
         KazumiDialog.dismiss();
       }
-      progressValue.dispose();
-      progressText.dispose();
     }
 
     KazumiDialog.showToast(
@@ -189,8 +142,7 @@ class _CollectPageState extends State<CollectPage>
       KazumiDialog.dismiss();
       return;
     }
-    navigationBarState.updateSelectedIndex(0);
-    Modular.to.navigate('/tab/popular/');
+    context.navigate('/tab/popular/');
   }
 
   @override
@@ -198,8 +150,6 @@ class _CollectPageState extends State<CollectPage>
     super.initState();
     collectController.loadCollectibles();
     tabController = TabController(vsync: this, length: tabs.length);
-    navigationBarState =
-        Provider.of<NavigationBarState>(context, listen: false);
   }
 
   @override
@@ -253,12 +203,12 @@ class _CollectPageState extends State<CollectPage>
         ),
         floatingActionButton: FloatingActionButton(
           onPressed: () async {
-            bool webDavenable = await setting.get(SettingBoxKey.webDavEnable,
-                defaultValue: false);
-            bool webDavCollectEnable = await setting
-                .get(SettingBoxKey.webDavEnableCollect, defaultValue: false);
-            bool bgmSyncEnable = await setting
-                .get(SettingBoxKey.bangumiSyncEnable, defaultValue: false);
+            bool webDavenable =
+                await GStorage.getSetting(SettingsKeys.webDavEnable);
+            bool webDavCollectEnable =
+                GStorage.getSetting(SettingsKeys.webDavEnableCollect);
+            bool bgmSyncEnable =
+                GStorage.getSetting(SettingsKeys.bangumiSyncEnable);
             final syncPlan = CollectSyncPlan(
               webDavEnabled: webDavenable,
               webDavCollectiblesEnabled: webDavCollectEnable,
@@ -316,6 +266,8 @@ class _CollectPageState extends State<CollectPage>
   }
 
   List<Widget> contentGrid(List<CollectedBangumi> collectedBangumiList) {
+    final bool showAnimeCounter =
+        GStorage.getSetting(SettingsKeys.showAnimeCounter);
     List<Widget> gridViewList = [];
     List<List<CollectedBangumi>> collectedBangumiRenderItemList =
         List.generate(tabs.length, (_) => <CollectedBangumi>[]);
@@ -394,10 +346,82 @@ class _CollectPageState extends State<CollectPage>
                 ),
               ),
             ),
+            if (collectedBangumiRenderItem.isNotEmpty && showAnimeCounter)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.end,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(top: 12, bottom: 12),
+                      child: Text(
+                        '总计：${collectedBangumiRenderItem.length}',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
           ],
         ),
       );
     }
     return gridViewList;
+  }
+}
+
+class _FullSyncProgressDialog extends StatefulWidget {
+  const _FullSyncProgressDialog({super.key});
+
+  @override
+  State<_FullSyncProgressDialog> createState() =>
+      _FullSyncProgressDialogState();
+}
+
+class _FullSyncProgressDialogState extends State<_FullSyncProgressDialog> {
+  String _progressText = '准备开始同步收藏...';
+  double? _progressValue;
+
+  void update(String text, double? value) {
+    if (!mounted) return;
+    setState(() {
+      _progressText = text;
+      _progressValue = value;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return PopScope(
+      canPop: false,
+      child: Dialog(
+        child: Padding(
+          padding: const EdgeInsets.all(20.0),
+          child: SizedBox(
+            width: 340,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  '收藏全量同步中',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(_progressText),
+                const SizedBox(height: 12),
+                LinearProgressIndicator(value: _progressValue),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
