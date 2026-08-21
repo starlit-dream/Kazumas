@@ -63,6 +63,23 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 中心化解析最新上游版本，供各平台构建 job 注入 UPSTREAM_VERSION
+  resolve-versions:
+    name: "Resolve versions"
+    runs-on: "ubuntu-latest"
+    outputs:
+      upstream_version: ${{ steps.resolve.outputs.upstream_version }}
+    steps:
+      - name: Resolve upstream version
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          UPSTREAM_TAG=$(gh api repos/Predidit/Kazumi/releases/latest --jq '.tag_name' 2>/dev/null || echo "unknown")
+          echo "Detected upstream version: $UPSTREAM_TAG"
+          echo "upstream_version=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+        shell: bash
+
   flutter-test:
     if: ${{ github.event_name == 'workflow_dispatch' || ! github.event.pull_request.draft }}
     runs-on: "ubuntu-latest"
@@ -105,7 +122,7 @@ jobs:
 
 
   flutter-build-android:
-    needs: [flutter-test, flutter-analyze]
+    needs: [resolve-versions, flutter-test, flutter-analyze]
     if: ${{ (github.event_name == 'pull_request' && ! github.event.pull_request.draft) || (github.event_name == 'workflow_dispatch' && (inputs.run_android || (! inputs.run_android && ! inputs.run_windows && ! inputs.run_ios && ! inputs.run_macos && ! inputs.run_linux))) }}
     name: "Release for android"
     runs-on: "ubuntu-latest"
@@ -139,7 +156,7 @@ jobs:
         run: flutter doctor -v
         shell: bash
       - name: Build Flutter for Android
-        run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=2.2.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
+        run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
       - name: Package android build output
         run: cp build/app/outputs/flutter-apk/app-arm64-v8a-release.apk Kazumas_android_canary.apk
@@ -152,7 +169,7 @@ jobs:
           path: Kazumas_android_*.apk
 
   flutter-build-windows:
-    needs: [flutter-test, flutter-analyze]
+    needs: [resolve-versions, flutter-test, flutter-analyze]
     if: ${{ (github.event_name == 'pull_request' && ! github.event.pull_request.draft) || (github.event_name == 'workflow_dispatch' && (inputs.run_windows || (! inputs.run_android && ! inputs.run_windows && ! inputs.run_ios && ! inputs.run_macos && ! inputs.run_linux))) }}
     name: "Release for windows"
     runs-on: "windows-latest"
@@ -176,7 +193,7 @@ jobs:
           distribution: 'temurin'
           java-version: '18'
       - run: flutter pub get
-      - run: flutter build windows --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=2.2.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - run: flutter build windows --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
       - run: Compress-Archive build/windows/x64/runner/Release/* Kazumas_windows_canary.zip
       - name: Upload windows outputs
         id: unsigned-windows-packet-artifacts
@@ -219,7 +236,7 @@ jobs:
 
 
   flutter-build-ios:
-    needs: [flutter-test, flutter-analyze]
+    needs: [resolve-versions, flutter-test, flutter-analyze]
     if: ${{ (github.event_name == 'pull_request' && ! github.event.pull_request.draft) || (github.event_name == 'workflow_dispatch' && (inputs.run_ios || (! inputs.run_android && ! inputs.run_windows && ! inputs.run_ios && ! inputs.run_macos && ! inputs.run_linux))) }}
     name: "Release for iOS"
     runs-on: "macos-latest"
@@ -239,7 +256,7 @@ jobs:
         run: |
           flutter build ios --release --no-codesign \
                 --dart-define=BRANCH_VERSION=pr \
-                --dart-define=UPSTREAM_VERSION=2.2.9 \
+                --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} \
                 --dart-define=BUILD_COMMIT=${{ github.sha }}
       - name: Create IPA
         run: |
@@ -254,7 +271,7 @@ jobs:
           path: Kazumas_ios_*.ipa
 
   flutter-build-macos:
-    needs: [flutter-test, flutter-analyze]
+    needs: [resolve-versions, flutter-test, flutter-analyze]
     if: ${{ (github.event_name == 'pull_request' && ! github.event.pull_request.draft) || (github.event_name == 'workflow_dispatch' && (inputs.run_macos || (! inputs.run_android && ! inputs.run_windows && ! inputs.run_ios && ! inputs.run_macos && ! inputs.run_linux))) }}
     name: "Release for Macos"
     runs-on: "macos-latest"
@@ -270,7 +287,7 @@ jobs:
           flutter-version-file: pubspec.yaml
           cache: true
       - run: flutter pub get
-      - run: flutter build macos --release --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=2.2.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - run: flutter build macos --release --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
       - name: Create DMG
         continue-on-error: true
         run: |
@@ -300,7 +317,7 @@ jobs:
                 Kazumas_macos_*.zip
 
   flutter-build-linux-amd64:
-    needs: [flutter-test, flutter-analyze]
+    needs: [resolve-versions, flutter-test, flutter-analyze]
     if: ${{ (github.event_name == 'pull_request' && ! github.event.pull_request.draft) || (github.event_name == 'workflow_dispatch' && (inputs.run_linux || (! inputs.run_android && ! inputs.run_windows && ! inputs.run_ios && ! inputs.run_macos && ! inputs.run_linux))) }}
     name: "Release for Linux amd64"
     runs-on: "ubuntu-latest" 
@@ -336,7 +353,7 @@ jobs:
         run: flutter pub get
         shell: bash
       - name: Build Flutter for Linux
-        run: flutter build linux --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=2.2.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
+        run: flutter build linux --dart-define=BRANCH_VERSION=pr --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
       # - name: Download FFmpeg Assets
       #   uses: dsaltares/fetch-gh-release-asset@master
@@ -391,8 +408,8 @@ jobs:
         with:
           name: linux_amd64_outputs
           path: |
-                Kazumi_linux_*.tar.gz
-                Kazumi_linux_*.deb
+                Kazumas_linux_*.tar.gz
+                Kazumas_linux_*.deb
 
   flutter-build-linux-arm64:
     needs: [flutter-test, flutter-analyze]
@@ -460,8 +477,8 @@ jobs:
                        libwebkit2gtk-4.1-0
           EOF
 
-          cp ../assets/linux/io.github.Predidit.Kazumi.desktop usr/share/applications
-          cp ../assets/images/logo/logo_linux.png usr/share/icons/hicolor/512x512/apps/io.github.Predidit.Kazumi.png
+          cp ../assets/linux/io.github.starlitdream.Kazumas.desktop usr/share/applications
+          cp ../assets/images/logo/logo_linux.png usr/share/icons/hicolor/512x512/apps/io.github.starlitdream.Kazumas.png
 
           cd ..
           dpkg-deb --build --root-owner-group Kazumi_linux_canary_arm64
