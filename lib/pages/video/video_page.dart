@@ -27,6 +27,7 @@ import 'package:kazumi/modules/download/download_module.dart';
 import 'package:kazumi/services/player/timed_shutdown_service.dart';
 import 'package:kazumi/utils/device.dart';
 import 'package:kazumi/services/platform/display_mode_service.dart';
+import 'package:flutter/services.dart';
 import 'package:mobx/mobx.dart' as mobx;
 
 class VideoPage extends StatefulWidget {
@@ -635,6 +636,46 @@ class _VideoPageState extends State<VideoPage>
                           child: Focus(
                             focusNode: keyboardFocus,
                             autofocus: true,
+                            canRequestFocus:
+                                MediaQuery.sizeOf(context).width <=
+                                        MediaQuery.sizeOf(context).height ||
+                                    !videoPageController.showTabBody,
+                            onKeyEvent: (focusNode, KeyEvent event) {
+                              final logicalKey = event.logicalKey;
+                              if (event is! KeyDownEvent) {
+                                return KeyEventResult.ignored;
+                              }
+                              // TV 遥控器适配：确定键显示/聚焦控制栏，
+                              // 返回键退回上一页。
+                              final bool isTvActivate =
+                                  logicalKey == LogicalKeyboardKey.select ||
+                                      logicalKey == LogicalKeyboardKey.enter ||
+                                      logicalKey ==
+                                          LogicalKeyboardKey.numpadEnter;
+                              final bool isTvBack =
+                                  logicalKey == LogicalKeyboardKey.goBack ||
+                                      logicalKey == LogicalKeyboardKey.escape;
+                              if (isTvActivate) {
+                                if (playerController
+                                    .panel.showVideoController) {
+                                  return KeyEventResult.ignored;
+                                }
+                                playerController.panel.showVideoController =
+                                    true;
+                                WidgetsBinding.instance
+                                    .addPostFrameCallback((_) {
+                                  if (mounted) {
+                                    FocusScope.of(context).nextFocus();
+                                  }
+                                });
+                                return KeyEventResult.handled;
+                              }
+                              if (isTvBack) {
+                                onBackPressed(context);
+                                return KeyEventResult.handled;
+                              }
+                              return KeyEventResult.ignored;
+                            },
                             child: playerBody,
                           ),
                         ),

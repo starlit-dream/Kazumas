@@ -1,10 +1,8 @@
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
-import 'package:kazumi/modules/bangumi/bangumi_interest.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/modules/bangumi/bangumi_relation.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
-import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/modules/bangumi/subject_relation.dart';
 import 'package:kazumi/modules/search/plugin_search_module.dart';
 import 'package:kazumi/pages/info/rating_review_dialog.dart';
@@ -50,6 +48,20 @@ abstract class _InfoController with Store {
   bool relatedSubjectsLoading = false;
 
   @observable
+  var relationList = ObservableList<BangumiRelation>();
+
+  @observable
+  bool relationsIsLoading = false;
+
+  @observable
+  bool relationsQueryTimeout = false;
+
+  @observable
+  bool relationsHasLoaded = false;
+
+  int _relationRequestGeneration = 0;
+
+  @observable
   int syncedCollectType = 0;
 
   @observable
@@ -73,6 +85,49 @@ abstract class _InfoController with Store {
   /// episodeId -> type (0=未看, 2=已看)
   final ObservableMap<int, int> episodeProgressMap = ObservableMap<int, int>();
 
+  int _commentsOffset = 0;
+
+  void clearComments() {
+    commentsList.clear();
+    _commentsOffset = 0;
+  }
+
+  void _removeCurrentUserFromPublicComments() {
+    final interest = bangumiItem.interest;
+    if (interest == null) return;
+    final userId = interest.user?.id;
+    if (userId == null) return;
+    commentsList.removeWhere((item) => item.user.id == userId);
+  }
+
+  bool _isFillingInterestUserProfile = false;
+
+  Future<bool> fillInterestUserProfileIfNeeded() async {
+    final interest = bangumiItem.interest;
+    if (interest == null || interest.hasUserProfile) {
+      return false;
+    }
+    if (_isFillingInterestUserProfile) {
+      return false;
+    }
+    _isFillingInterestUserProfile = true;
+    try {
+      final user = await BangumiApi.getCurrentUser();
+      if (user == null) {
+        return false;
+      }
+      bangumiItem.interest = interest.copyWithUser(user: user);
+      await collectController.updateLocalCollect(bangumiItem);
+      return true;
+    } catch (e) {
+      KazumiLogger()
+          .e('InfoController: failed to fill interest user profile', error: e);
+      return false;
+    } finally {
+      _isFillingInterestUserProfile = false;
+    }
+  }
+
   @observable
   var bangumiEpisodeList = ObservableList<Map<String, dynamic>>();
 
@@ -86,6 +141,41 @@ abstract class _InfoController with Store {
     } finally {
       isLoading = false;
     }
+  }
+
+  Future<void> refreshBangumiInfoByID(int id) async {
+    await _updateBangumiInfoByID(id, type: "update");
+  }
+
+  Future<void> _updateBangumiInfoByID(int id, {required String type}) async {
+    final value = await BangumiApi.getBangumiInfoByID(id);
+    if (value == null) {
+      return;
+    }
+    if (type == "init") {
+      bangumiItem = value;
+    } else {
+      bangumiItem.summary = value.summary;
+      bangumiItem.tags = value.tags;
+      bangumiItem.rank = value.rank;
+      bangumiItem.airDate = value.airDate;
+      bangumiItem.airWeekday = value.airWeekday;
+      bangumiItem.alias = value.alias;
+      bangumiItem.ratingScore = value.ratingScore;
+      bangumiItem.votes = value.votes;
+      bangumiItem.votesCount = value.votesCount;
+      final incomingInterest = value.interest;
+      final previousInterest = bangumiItem.interest;
+      if (incomingInterest == null) {
+        bangumiItem.interest = null;
+      } else if (previousInterest == null || !previousInterest.hasUserProfile) {
+        bangumiItem.interest = incomingInterest;
+      } else {
+        bangumiItem.interest =
+            incomingInterest.copyWithUser(user: previousInterest.user);
+      }
+    }
+    await collectController.updateLocalCollect(bangumiItem);
   }
 
   Future<void> syncBangumiCollection() async {
@@ -131,36 +221,6 @@ abstract class _InfoController with Store {
     } catch (e) {
       KazumiDialog.showToast(message: 'Bangumi 评分更新失败 ${e.toString()}');
     }
-  }
-
-  Future<void> queryBangumiCommentsByID(int id, {int offset = 0}) async {
-    if (offset == 0) {
-      commentsList.clear();
-    }
-    if (type == "init") {
-      bangumiItem = value;
-    } else {
-      bangumiItem.summary = value.summary;
-      bangumiItem.tags = value.tags;
-      bangumiItem.rank = value.rank;
-      bangumiItem.airDate = value.airDate;
-      bangumiItem.airWeekday = value.airWeekday;
-      bangumiItem.alias = value.alias;
-      bangumiItem.ratingScore = value.ratingScore;
-      bangumiItem.votes = value.votes;
-      bangumiItem.votesCount = value.votesCount;
-      final incomingInterest = value.interest;
-      final previousInterest = bangumiItem.interest;
-      if (incomingInterest == null) {
-        bangumiItem.interest = null;
-      } else if (previousInterest == null || !previousInterest.hasUserProfile) {
-        bangumiItem.interest = incomingInterest;
-      } else {
-        bangumiItem.interest =
-            incomingInterest.copyWithUser(user: previousInterest.user);
-      }
-    }
-    await collectController.updateLocalCollect(bangumiItem);
   }
 
   Future<void> queryBangumiCommentsByID(int id, {bool refresh = true}) async {
@@ -382,5 +442,63 @@ abstract class _InfoController with Store {
     } finally {
       relatedSubjectsLoading = false;
     }
+  }
+
+  void clearRelations() {
+    relatedSubjectList.clear();
+    relatedSubjectsLoading = false;
+    _relationRequestGeneration++;
+    relationList = ObservableList<BangumiRelation>();
+    relationsIsLoading = false;
+    relationsQueryTimeout = false;
+    relationsHasLoaded = false;
+  }
+
+  Future<void> queryBangumiRelationsByID(int id) async {
+    if (relationsIsLoading) return;
+
+    final requestGeneration = ++_relationRequestGeneration;
+    relationsIsLoading = true;
+    relationsQueryTimeout = false;
+    relationsHasLoaded = false;
+    try {
+      final relations = await BangumiApi.getBangumiRelationsByID(id);
+      if (requestGeneration != _relationRequestGeneration) {
+        return;
+      }
+      relationList = ObservableList<BangumiRelation>.of(relations);
+      relationsHasLoaded = true;
+      KazumiLogger().i(
+        'InfoController: loaded related anime list length ${relationList.length}',
+      );
+    } catch (_) {
+      if (requestGeneration == _relationRequestGeneration) {
+        relationsQueryTimeout = true;
+        rethrow;
+      }
+    } finally {
+      if (requestGeneration == _relationRequestGeneration) {
+        relationsIsLoading = false;
+      }
+    }
+  }
+
+  Future<bool> rateBangumi(RatingReviewResult data,
+      {required int localType}) async {
+    final trimmedComment = data.comment.trim();
+    if (await BangumiApi.addOrUpdateBangumiEvaluationBySubjectID(
+      bangumiItem.id,
+      localType,
+      comment: trimmedComment.isNotEmpty ? trimmedComment : null,
+      rate: data.score > 0 ? data.score : 0,
+      tags: data.tags.isNotEmpty ? data.tags : null,
+    )) {
+      userRating = data.score;
+      userComment = trimmedComment;
+      await refreshUserReview();
+      await refreshBangumiCommentsSilently(bangumiItem.id);
+      return true;
+    }
+    return false;
   }
 }

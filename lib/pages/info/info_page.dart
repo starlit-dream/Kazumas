@@ -1,11 +1,8 @@
 import 'dart:io';
 import 'dart:ui';
-import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
-import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/pages/info/rating_review_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
 import 'package:kazumi/bean/widget/embedded_native_control_area.dart';
 import 'package:kazumi/bean/widget/progress_editor.dart';
@@ -19,11 +16,12 @@ import 'package:kazumi/pages/info/info_controller.dart';
 import 'package:kazumi/bean/card/bangumi_info_card.dart';
 import 'package:kazumi/pages/info/source_sheet.dart';
 import 'package:kazumi/modules/search/plugin_search_module.dart';
-import 'package:kazumi/plugins/plugins.dart';
 import 'package:kazumi/plugins/plugins_controller.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/pages/info/info_tabview.dart';
+import 'package:kazumi/pages/video/video_playback_args.dart';
+import 'package:kazumi/services/plugin/rule_engine_models.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
@@ -55,18 +53,13 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
     '关联',
     '制作人员',
   ];
-  static const int _commentsTabIndex = 1;
   static const Duration _minimumBangumiInfoLoadingDuration =
       Duration(milliseconds: 600);
 
   /// Don't use modular singleton here. We may have multiple info pages.
   /// Use a new instance of InfoController for each info page.
-  final InfoController infoController = InfoController();
-  final VideoPageController videoPageController =
-      Modular.get<VideoPageController>();
-  final PluginsController pluginsController = Modular.get<PluginsController>();
-  final Box setting = GStorage.setting;
-  late TabController sourceTabController;
+  InfoController get infoController => widget.infoController;
+  PluginsController get pluginsController => widget.pluginsController;
   late TabController infoTabController;
   late bool showRating;
   late bool watchNow;
@@ -81,7 +74,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   bool staffQueryTimeout = false;
   bool staffIsEmpty = false;
   bool _showBangumiInfoSkeleton = false;
-  int _fabTabIndex = 0;
 
   BangumiItem get inputBangumiIten => widget.inputBangumiItem;
 
@@ -155,8 +147,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
 
   Future<void> loadRelations() async {
     try {
-      await infoController
-          .queryBangumiRelationsByID(infoController.bangumiItem.id);
+      await infoController.queryRelatedSubjects(infoController.bangumiItem.id);
     } catch (e) {
       KazumiLogger().e('InfoPage: failed to load relations', error: e);
     }
@@ -251,12 +242,10 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
       infoController.queryEpisodeProgress(infoController.bangumiItem.id);
       infoController.queryBangumiEpisodes(infoController.bangumiItem.id);
     }
-    sourceTabController =
-        TabController(length: pluginsController.pluginList.length, vsync: this);
     infoTabController = TabController(length: 5, vsync: this);
     showRating =
-        GStorage.setting.get(SettingBoxKey.showRating, defaultValue: true);
-    watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
+        GStorage.getSetting(SettingsKeys.showRating);
+    watchNow = GStorage.getSetting(SettingsKeys.watchNow);
     infoTabController.addListener(() {
       int index = infoTabController.index;
       if (index == 1 &&
@@ -303,9 +292,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
 
   @override
   void dispose() {
-    infoTabController.removeListener(onInfoTabChanged);
-    infoTabController.removeListener(_syncFabTabIndex);
-    infoTabController.animation?.removeListener(_syncFabTabIndex);
     infoController.characterList.clear();
     infoController.clearComments();
     infoController.staffList.clear();
@@ -373,8 +359,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
       showDragHandle: true,
       context: context,
       builder: (context) {
-        return SourceSheet(
-            tabController: sourceTabController, infoController: infoController);
+        return SourceSheet(infoController: infoController);
       },
     );
   }
@@ -412,7 +397,7 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   }
 
   Future<void> _watchNow() async {
-    final historyController = Modular.get<HistoryController>();
+    final historyController = inject<HistoryController>();
     final pluginList = pluginsController.pluginList.toList();
     final keyword = infoController.bangumiItem.nameCn.isEmpty
         ? infoController.bangumiItem.name
@@ -464,29 +449,38 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
 
     if (!mounted) return;
 
-    KazumiDialog.dismiss();
-    KazumiDialog.showLoading(
-      msg: '获取线路中...',
-      barrierDismissible: Utils.isDesktop(),
-      onDismiss: () {
-        videoPageController.cancelQueryRoads();
-      },
-    );
-
     final selected = bestResult;
     final plugin = pluginList.firstWhere((p) => p.name == selected.pluginName);
     final searchItem = selected.data.first;
 
-    videoPageController.bangumiItem = infoController.bangumiItem;
-    videoPageController.currentPlugin = plugin;
-    videoPageController.title = searchItem.name;
-    videoPageController.src = searchItem.src;
+    final cancelToken = RuleCancelToken();
+    KazumiDialog.dismiss();
+    KazumiDialog.showLoading(
+      msg: '获取线路中...',
+      barrierDismissible: isDesktop(),
+      onDismiss: cancelToken.cancel,
+    );
 
     try {
-      await videoPageController.queryRoads(searchItem.src, plugin.name);
+      final roads = await plugin.queryChapterRoads(
+        searchItem.src,
+        cancelToken: cancelToken,
+      );
+      if (roads.isEmpty) {
+        throw ChapterErrorException(plugin.name);
+      }
       KazumiDialog.dismiss();
       if (mounted) {
-        await Modular.to.pushNamed('/video/');
+        context.pushNamed(
+          '/video/',
+          arguments: OnlineVideoPlaybackArgs(
+            bangumiItem: infoController.bangumiItem,
+            plugin: plugin,
+            title: searchItem.name,
+            src: searchItem.src,
+            roads: roads,
+          ),
+        );
       }
     } catch (_) {
       KazumiLogger().w('WatchNow: failed to query video playlist');
@@ -501,7 +495,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
   Widget build(BuildContext context) {
     final bool showWindowButton =
         GStorage.getSetting(SettingsKeys.showWindowButton);
-    final bool showRatingFab = _fabTabIndex == _commentsTabIndex;
     return PopScope(
       canPop: true,
       child: DefaultTabController(
@@ -957,10 +950,6 @@ class _InfoPageState extends State<InfoPage> with TickerProviderStateMixin {
                 onCommentsTabSelected: onCommentsTabSelected,
                 characterList: infoController.characterList,
                 staffList: infoController.staffList,
-                relationList: infoController.relationList,
-                relationsIsLoading: infoController.relationsIsLoading,
-                relationsQueryTimeout: infoController.relationsQueryTimeout,
-                relationsHasLoaded: infoController.relationsHasLoaded,
                 loadRelations: loadRelations,
                 isLoading: showBangumiInfoSkeleton,
                 relatedSubjectList: infoController.relatedSubjectList,

@@ -65,46 +65,54 @@ final tabModule = createModule(
   },
 );
 
-  @override
-  void routes(r) {
-    r.child("/",
-        child: (_) => const InitPage(),
-        children: [
-          ChildRoute(
-            "/error",
-            child: (_) => Scaffold(
-          appBar: AppBar(title: const Text("Kazumas")),
-              body: const Center(child: Text("初始化失败")),
-            ),
-          ),
-        ],
-        transition: TransitionType.noTransition);
-    r.child(
-      "/tab",
-      child: (_) {
-        return const IndexPage();
-      },
-      children: menu.routes,
-      transition: TransitionType.fadeIn,
-      duration: Duration(milliseconds: 70),
-    );
-    r.module("/video", module: VideoModule());
-    r.child(
-      ImageViewer.routePath,
-      child: (_) {
-        final args = Modular.args.data as ImageViewerRouteArgs;
-        return ImageViewer(
-          imageUrl: args.imageUrl,
-          heroTag: args.heroTag,
-        );
-      },
-      transition: TransitionType.fadeIn,
-      duration: Duration(milliseconds: 220),
-    );
-
-    /// The route need [ BangumiItem ] as argument.
-    r.module("/info", module: InfoModule());
-    r.module("/settings", module: SettingsModule());
-    r.module("/search", module: SearchModule());
-  }
-}
+final indexModule = createModule(
+  register: (c) {
+    c
+      ..route(
+        '/',
+        child: (context, state) => InitPage(
+          pluginsController: inject<PluginsController>(),
+          collectController: inject<CollectController>(),
+          shaderAssetService: inject<ShaderAssetService>(),
+          myController: inject<MyController>(),
+          downloadController: inject<DownloadController>(),
+        ),
+        transition: TransitionType.none,
+      )
+      ..route(
+        '/onboarding',
+        child: (context, state) => OnboardingPage(
+          pluginsController: inject<PluginsController>(),
+          myController: inject<MyController>(),
+        ),
+        transition: TransitionType.none,
+      )
+      ..route(
+        '/error',
+        child: (context, state) => Scaffold(
+          appBar: AppBar(title: const Text('Kazumi')),
+          body: const Center(child: Text('初始化失败')),
+        ),
+      )
+      ..module(tabModule)
+      ..module(videoModule)
+      ..route(
+        ImageViewer.routePath,
+        child: (context, state) {
+          final args = state.arguments;
+          if (args is! ImageViewerRouteArgs) {
+            return const RouteErrorPage(message: '图片预览参数无效，请返回后重试。');
+          }
+          return ImageViewer(
+            imageUrls: args.imageUrls,
+            initialIndex: args.initialIndex,
+            heroTag: args.heroTag,
+          );
+        },
+        transition: _imagePreviewTransition,
+      )
+      ..module(infoModule)
+      ..module(settingsModule)
+      ..module(searchModule);
+  },
+);

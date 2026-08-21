@@ -485,6 +485,46 @@ class SettingsKeys {
     true,
     group: SettingGroup.bangumi,
   );
+  static const bangumiUsername = SettingKey<String>(
+    _SettingBoxKey.bangumiUsername,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiNickname = SettingKey<String>(
+    _SettingBoxKey.bangumiNickname,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const bangumiAvatar = SettingKey<String>(
+    _SettingBoxKey.bangumiAvatar,
+    '',
+    group: SettingGroup.bangumi,
+  );
+  static const watchedPopupEnabled = SettingKey<bool>(
+    _SettingBoxKey.watchedPopupEnabled,
+    true,
+    group: SettingGroup.bangumi,
+  );
+  static const watchedAutoRecord = SettingKey<bool>(
+    _SettingBoxKey.watchedAutoRecord,
+    false,
+    group: SettingGroup.bangumi,
+  );
+  static const watchedAutoRecordThreshold = SettingKey<double>(
+    _SettingBoxKey.watchedAutoRecordThreshold,
+    0.9,
+    group: SettingGroup.bangumi,
+  );
+  static const watchNow = SettingKey<bool>(
+    _SettingBoxKey.watchNow,
+    false,
+    group: SettingGroup.bangumi,
+  );
+  static const finishReviewPopupEnabled = SettingKey<bool>(
+    _SettingBoxKey.finishReviewPopupEnabled,
+    true,
+    group: SettingGroup.bangumi,
+  );
   static const brightnessVolumeGesture = SettingKey<bool>(
     _SettingBoxKey.brightnessVolumeGesture,
     true,
@@ -610,6 +650,14 @@ class SettingsKeys {
     bangumiAccessToken,
     bangumiSyncPriority,
     bangumiImmediateSyncToastEnable,
+    bangumiUsername,
+    bangumiNickname,
+    bangumiAvatar,
+    watchedPopupEnabled,
+    watchedAutoRecord,
+    watchedAutoRecordThreshold,
+    watchNow,
+    finishReviewPopupEnabled,
     brightnessVolumeGesture,
     historySyncDeviceId,
     historySyncSequence,
@@ -721,6 +769,14 @@ class _SettingBoxKey {
       bangumiAccessToken = 'bangumiAccessToken',
       bangumiSyncPriority = 'bangumiSyncPriority',
       bangumiImmediateSyncToastEnable = 'bangumiImmediateSyncToastEnable',
+      bangumiUsername = 'bangumiUsername',
+      bangumiNickname = 'bangumiNickname',
+      bangumiAvatar = 'bangumiAvatar',
+      watchedPopupEnabled = 'watchedPopupEnabled',
+      watchedAutoRecord = 'watchedAutoRecord',
+      watchedAutoRecordThreshold = 'watchedAutoRecordThreshold',
+      watchNow = 'watchNow',
+      finishReviewPopupEnabled = 'finishReviewPopupEnabled',
       brightnessVolumeGesture = 'brightnessVolumeGesture',
       historySyncDeviceId = 'historySyncDeviceId',
       historySyncSequence = 'historySyncSequence',

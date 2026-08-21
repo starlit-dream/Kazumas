@@ -91,129 +91,116 @@ class _MyPageState extends State<MyPage> {
                     ],
                   ),
                 ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/download/');
-                  },
-                  leading: const Icon(Icons.download_rounded),
-                  title: Text('下载管理', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('查看和管理离线下载',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/download-settings');
-                  },
-                  leading: const Icon(Icons.settings_rounded),
-                  title: Text('下载设置', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('配置下载并发数等参数',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/plugin/');
-                  },
-                  leading: const Icon(Icons.extension),
-                  title: Text('规则管理', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('管理番剧资源规则',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-              ],
-            ),
-            SettingsSection(
-              title: Text('播放器设置', style: TextStyle(fontFamily: fontFamily)),
-              tiles: [
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/player');
-                  },
-                  leading: const Icon(Icons.display_settings_rounded),
-                  title: Text('播放设置', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('设置播放器相关参数',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/danmaku/');
-                  },
-                  leading: const Icon(Icons.subtitles_rounded),
-                  title: Text('弹幕设置', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('设置弹幕相关参数',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/keyboard');
-                  },
-                  leading: const Icon(Icons.keyboard_rounded),
-                  title: Text('操作设置', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('设置播放器按键映射',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/proxy');
-                  },
-                  leading: const Icon(Icons.vpn_key_rounded),
-                  title: Text('代理设置', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('配置HTTP代理',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-              ],
-            ),
-            SettingsSection(
-              title: Text('应用与外观', style: TextStyle(fontFamily: fontFamily)),
-              tiles: [
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/theme');
-                  },
-                  leading: const Icon(Icons.palette_rounded),
-                  title: Text('外观设置', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('设置应用主题和刷新率',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/interface');
-                  },
-                  leading: const Icon(Icons.pages_rounded),
-                  title: Text('界面设置', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('设置应用界面样式',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/bangumi');
-                  },
-                  leading: const Icon(Icons.sync_rounded),
-                  title: Text('Bangumi 同步', style: TextStyle(fontFamily: fontFamily)),
-                  description: Text('登录 Bangumi 并同步在看和已看状态',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/webdav/');
-                  },
-                  leading: const Icon(Icons.cloud),
-                  title: Text('同步设置', style: TextStyle(fontFamily: fontFamily)),
-                  description:
-                      Text('设置同步参数', style: TextStyle(fontFamily: fontFamily)),
-                ),
-              ],
-            ),
-            SettingsSection(
-              title: Text('其他', style: TextStyle(fontFamily: fontFamily)),
-              tiles: [
-                SettingsTile.navigation(
-                  onPressed: (_) {
-                    Modular.to.pushNamed('/settings/about/');
-                  },
-                  leading: const Icon(Icons.info_outline_rounded),
-                  title: Text('关于', style: TextStyle(fontFamily: fontFamily)),
-                ),
-              ],
-            ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  List<Widget> _narrowHeader(WatchStats stats) {
+    return [
+      _CollectHero(stats: stats),
+      const SizedBox(height: 12),
+      _statTiles(stats),
+      const SizedBox(height: 12),
+      _entryGroup(stats),
+    ];
+  }
+
+  Widget _wideHeader(WatchStats stats) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 3,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _CollectHero(stats: stats),
+              const SizedBox(height: 12),
+              _statTiles(stats),
+            ],
+          ),
+        ),
+        const SizedBox(width: 16),
+        Expanded(flex: 2, child: _entryGroup(stats)),
+      ],
+    );
+  }
+
+  List<Widget> _recentSection() {
+    final crossCount = _recentCrossCount();
+    final int maxCount = crossCount == 1 ? 3 : crossCount * 2;
+    final int count = myController.recentWatches.length < maxCount
+        ? myController.recentWatches.length
+        : maxCount;
+    if (count == 0) {
+      return const [];
+    }
+    return [
+      const SizedBox(height: 24),
+      _sectionLabel('继续观看'),
+      const SizedBox(height: 12),
+      GridView.builder(
+        shrinkWrap: true,
+        padding: EdgeInsets.zero,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: crossCount,
+          crossAxisSpacing: StyleString.cardSpace,
+          mainAxisSpacing: StyleString.cardSpace,
+          mainAxisExtent: 128,
+        ),
+        itemCount: count,
+        itemBuilder: (context, index) {
+          final item = myController.recentWatches[index];
+          return RecentWatchCard(key: ValueKey(item.id), item: item);
+        },
+      ),
+    ];
+  }
+
+  Widget _sectionLabel(String text) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(left: 4),
+      child: Text(
+        text,
+        style: theme.textTheme.titleSmall?.copyWith(
+          color: theme.colorScheme.onSurfaceVariant,
+        ),
+      ),
+    );
+  }
+
+  Widget _statTiles(WatchStats stats) {
+    final tiles = <Widget>[
+      _StatTile(
+        value: '${stats.watchedBangumiCount}',
+        unit: '部',
+        label: '看过番剧',
+      ),
+      _StatTile(
+        value: '${stats.watchedEpisodeCount}',
+        unit: '集',
+        label: '观看集数',
+      ),
+      _StatTile(
+        value: '${stats.downloadTaskCount}',
+        unit: '集',
+        label: '离线缓存',
+      ),
+    ];
+    // Tiles hold different amounts of text; stretch keeps them level.
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < tiles.length; i++) ...[
+            if (i > 0) const SizedBox(width: 12),
+            Expanded(child: tiles[i]),
           ],
         ],
       ),

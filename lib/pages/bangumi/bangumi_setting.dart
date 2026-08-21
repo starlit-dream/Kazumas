@@ -6,7 +6,6 @@ import 'package:kazumi/modules/bangumi/sync_priority.dart';
 import 'package:kazumi/services/sync/bangumi_sync_service.dart';
 import 'package:kazumi/utils/finish_review_trigger.dart';
 import 'package:kazumi/services/storage/storage.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class BangumiEditorPage extends StatefulWidget {
@@ -33,21 +32,18 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
   void initState() {
     super.initState();
     bangumiTokenController.text =
-        setting.get(SettingBoxKey.bangumiAccessToken, defaultValue: '');
-    bangumiImmediateSyncToastEnable = setting.get(
-      SettingBoxKey.bangumiImmediateSyncToastEnable,
-      defaultValue: true,
-    );
-    syncPriority =
-        setting.get(SettingBoxKey.bangumiSyncPriority, defaultValue: 0);
+        GStorage.getSetting(SettingsKeys.bangumiAccessToken);
+    bangumiImmediateSyncToastEnable =
+        GStorage.getSetting(SettingsKeys.bangumiImmediateSyncToastEnable);
+    syncPriority = GStorage.getSetting(SettingsKeys.bangumiSyncPriority);
     watchedPopupEnabled =
-        setting.get(SettingBoxKey.watchedPopupEnabled, defaultValue: true);
+        GStorage.getSetting(SettingsKeys.watchedPopupEnabled);
     watchedAutoRecord =
-        setting.get(SettingBoxKey.watchedAutoRecord, defaultValue: false);
+        GStorage.getSetting(SettingsKeys.watchedAutoRecord);
     watchedAutoRecordThreshold =
-        setting.get(SettingBoxKey.watchedAutoRecordThreshold, defaultValue: 0.9);
-    finishReviewPopupEnabled = setting
-        .get(SettingBoxKey.finishReviewPopupEnabled, defaultValue: true);
+        GStorage.getSetting(SettingsKeys.watchedAutoRecordThreshold);
+    finishReviewPopupEnabled =
+        GStorage.getSetting(SettingsKeys.finishReviewPopupEnabled);
   }
 
   @override
@@ -110,6 +106,7 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
 
   @override
   Widget build(BuildContext context) {
+    final fontFamily = Theme.of(context).textTheme.bodyMedium?.fontFamily;
     return PopScope(
       canPop: !syncCollectiblesing,
       child: Scaffold(
@@ -207,8 +204,8 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                         onToggle: (value) async {
                           watchedPopupEnabled =
                               value ?? !watchedPopupEnabled;
-                          await setting.put(
-                            SettingBoxKey.watchedPopupEnabled,
+                          await GStorage.putSetting(
+                            SettingsKeys.watchedPopupEnabled,
                             watchedPopupEnabled,
                           );
                           if (mounted) {
@@ -224,8 +221,8 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                         onToggle: (value) async {
                           watchedAutoRecord =
                               value ?? !watchedAutoRecord;
-                          await setting.put(
-                            SettingBoxKey.watchedAutoRecord,
+                          await GStorage.putSetting(
+                            SettingsKeys.watchedAutoRecord,
                             watchedAutoRecord,
                           );
                           if (mounted) {
@@ -237,7 +234,7 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                         description: Text('播放进度达到阈值后自动标记为已看过', style: TextStyle(fontFamily: fontFamily)),
                         initialValue: watchedAutoRecord,
                       ),
-                      SettingsTile.navigation(
+                      SettingsTile(
                         onPressed: (_) async {
                           final result = await showDialog<double>(
                             context: context,
@@ -283,8 +280,8 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                           );
                           if (result != null) {
                             watchedAutoRecordThreshold = result;
-                            await setting.put(
-                              SettingBoxKey.watchedAutoRecordThreshold,
+                            await GStorage.putSetting(
+                              SettingsKeys.watchedAutoRecordThreshold,
                               watchedAutoRecordThreshold,
                             );
                             if (mounted) setState(() {});
@@ -298,8 +295,8 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                         onToggle: (value) async {
                           finishReviewPopupEnabled =
                               value ?? !finishReviewPopupEnabled;
-                          await setting.put(
-                            SettingBoxKey.finishReviewPopupEnabled,
+                          await GStorage.putSetting(
+                            SettingsKeys.finishReviewPopupEnabled,
                             finishReviewPopupEnabled,
                           );
                           if (mounted) {
@@ -312,8 +309,8 @@ class _BangumiEditorPageState extends State<BangumiEditorPage> {
                             style: TextStyle(fontFamily: fontFamily)),
                         initialValue: finishReviewPopupEnabled,
                       ),
-                      SettingsTile.navigation(
-                        leading: const Icon(Icons.refresh_rounded),
+                      SettingsTile(
+                        leading: Icons.refresh_rounded,
                         onPressed: (_) async {
                           final confirmed = await showDialog<bool>(
                             context: context,

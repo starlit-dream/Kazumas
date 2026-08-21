@@ -68,26 +68,24 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
 
   void _loadSettingsFromStorage() {
     defaultPlaySpeed =
-        setting.get(SettingBoxKey.defaultPlaySpeed, defaultValue: 1.0);
-    defaultShortcutForwardPlaySpeed = setting
-        .get(SettingBoxKey.defaultShortcutForwardPlaySpeed, defaultValue: 2.0);
-    defaultAspectRatioType =
-        setting.get(SettingBoxKey.defaultAspectRatioType, defaultValue: 1);
-    hAenable = setting.get(SettingBoxKey.hAenable, defaultValue: true);
+        GStorage.getSetting<double>(SettingsKeys.defaultPlaySpeed);
+    defaultShortcutForwardPlaySpeed = GStorage.getSetting<double>(
+        SettingsKeys.defaultShortcutForwardPlaySpeed);
+    defaultAspectRatioMode = PlayerAspectRatio.fromStorageValue(
+      GStorage.getSetting<int>(SettingsKeys.defaultAspectRatioType),
+    );
+    hAenable = GStorage.getSetting<bool>(SettingsKeys.hAenable);
     androidEnableOpenSLES =
         GStorage.getSetting<bool>(SettingsKeys.androidEnableOpenSLES);
     androidAutoEnterPIP =
-        setting.get(SettingBoxKey.androidAutoEnterPIP, defaultValue: false);
-    lowMemoryMode =
-        setting.get(SettingBoxKey.lowMemoryMode, defaultValue: false);
-    playResume = setting.get(SettingBoxKey.playResume, defaultValue: true);
-    privateMode = setting.get(SettingBoxKey.privateMode, defaultValue: false);
-    showPlayerError =
-        setting.get(SettingBoxKey.showPlayerError, defaultValue: true);
-    playerDebugMode =
-        setting.get(SettingBoxKey.playerDebugMode, defaultValue: false);
-    autoPlayNext = setting.get(SettingBoxKey.autoPlayNext, defaultValue: true);
-    watchNow = setting.get(SettingBoxKey.watchNow, defaultValue: false);
+        GStorage.getSetting<bool>(SettingsKeys.androidAutoEnterPIP);
+    lowMemoryMode = GStorage.getSetting<bool>(SettingsKeys.lowMemoryMode);
+    playResume = GStorage.getSetting<bool>(SettingsKeys.playResume);
+    privateMode = GStorage.getSetting<bool>(SettingsKeys.privateMode);
+    showPlayerError = GStorage.getSetting<bool>(SettingsKeys.showPlayerError);
+    playerDebugMode = GStorage.getSetting<bool>(SettingsKeys.playerDebugMode);
+    autoPlayNext = GStorage.getSetting<bool>(SettingsKeys.autoPlayNext);
+    watchNow = GStorage.getSetting<bool>(SettingsKeys.watchNow);
     backgroundPlayback =
         GStorage.getSetting<bool>(SettingsKeys.backgroundPlayback);
     playerDisableAnimations =
@@ -269,6 +267,7 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final fontFamily = Theme.of(context).textTheme.bodyMedium?.fontFamily;
     return PopScope(
       canPop: true,
       onPopInvokedWithResult: (bool didPop, Object? result) {
@@ -388,7 +387,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                   leading: Icons.playlist_play_rounded,
                   onToggle: (value) async {
                     watchNow = value ?? !watchNow;
-                    await setting.put(SettingBoxKey.watchNow, watchNow);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.watchNow, watchNow);
                     setState(() {});
                   },
                   title: Text('立即观看', style: TextStyle(fontFamily: fontFamily)),
@@ -428,8 +428,8 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                   leading: Icons.block_rounded,
                   onToggle: (value) async {
                     forceAdBlocker = value ?? !forceAdBlocker;
-                    await setting.put(
-                        SettingBoxKey.forceAdBlocker, forceAdBlocker);
+                    await GStorage.putSetting<bool>(
+                        SettingsKeys.forceAdBlocker, forceAdBlocker);
                     setState(() {});
                   },
                   title: Text('广告过滤', style: TextStyle(fontFamily: fontFamily)),
@@ -604,44 +604,7 @@ class _PlayerSettingsPageState extends State<PlayerSettingsPage> {
                   },
                 ),
                 SettingsTile(
-                  title:
-                      Text('默认方向键倍速', style: TextStyle(fontFamily: fontFamily)),
-                  description: Slider(
-                    value: defaultShortcutForwardPlaySpeed,
-                    min: 1.25,
-                    max: 3,
-                    divisions: 7,
-                    label: '${defaultShortcutForwardPlaySpeed}x',
-                    onChanged: (value) {
-                      updateDefaultShortcutForwardPlaySpeed(
-                          double.parse(value.toStringAsFixed(2)));
-                    },
-                  ),
-                ),
-                SettingsTile.navigation(
-                  description: Slider(
-                    value: playerArrowKeySkipTime.toDouble(),
-                    min: 0,
-                    max: 15,
-                    divisions: 15,
-                    label: '$playerArrowKeySkipTime秒',
-                    onChanged: (value) {
-                      final newArrowKeySkipTime = value.toInt();
-                      print('新设置的方向键快进/快退时长: $newArrowKeySkipTime');
-
-                      if (value != playerArrowKeySkipTime) {
-                        setting.put(SettingBoxKey.arrowKeySkipTime,
-                            newArrowKeySkipTime);
-                        setState(() {
-                          playerArrowKeySkipTime = newArrowKeySkipTime;
-                        });
-                      }
-                    },
-                  ),
-                  title: Text('左右方向键的快进/快退秒数',
-                      style: TextStyle(fontFamily: fontFamily)),
-                ),
-                SettingsTile.navigation(
+                  leading: Icons.skip_next_rounded,
                   onPressed: (_) async {
                     await updateButtonSkipTime();
                   },

@@ -410,19 +410,13 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
   }
 
   Widget get bottomControlWidget {
-    return Observer(builder: (context) {
-      return Row(
-        children: [
-          IconButton(
-            autofocus: playerController.showVideoController,
-            color: Colors.white,
-            icon: Icon(playerController.playing
-                ? Icons.pause_rounded
-                : Icons.play_arrow_rounded),
-            tooltip: playerController.playing ? '暂停' : '播放',
-            onPressed: () {
-              playerController.playOrPause();
-            },
+    return Row(
+      children: [
+        IconButton(
+          autofocus: playerController.panel.showVideoController,
+          icon: PlayPauseIcon(
+            iconColor: Colors.white,
+            playing: playerController.playback.playing,
           ),
           tooltip: playerController.playback.playing ? '暂停' : '播放',
           onPressed: () {
@@ -480,6 +474,7 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
       child: Row(
         children: [
           IconButton(
+            autofocus: playerController.panel.showVideoController,
             color: Colors.white,
             icon: const Icon(Icons.arrow_back_rounded),
             tooltip: '返回',
@@ -493,91 +488,10 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
           forwardIcon(),
           if (isDesktop() || Platform.isAndroid)
             IconButton(
-              autofocus: playerController.showVideoController,
-              color: Colors.white,
-              icon: const Icon(Icons.arrow_back_rounded),
-              tooltip: '返回',
-              onPressed: () {
-                widget.onBackPressed(context);
-              },
-            ),
-            // 拖动条
-            const Expanded(
-              child: dtb.DragToMoveArea(child: SizedBox(height: 40)),
-            ),
-            // 跳过
-            forwardIcon(),
-            if (Utils.isDesktop() || Platform.isAndroid)
-              IconButton(
-                  onPressed: () async {
-                    if (Utils.isDesktop()) {
-                      if (videoPageController.isPip) {
-                        await PipUtils.exitDesktopPIPWindow();
-                      } else {
-                        // 进入画中画时使用播放源比例，避免窗口比例与视频比例不一致产生黑边
-                        await PipUtils.enterDesktopPIPWindow(
-                          width: playerController.playerWidth,
-                          height: playerController.playerHeight,
-                        );
-                      }
-                      videoPageController.isPip = !videoPageController.isPip;
-                      return;
-                    }
-                    final bool supported =
-                        await PipUtils.isAndroidPIPSupported();
-                    if (!supported) {
-                      KazumiDialog.showToast(message: '当前设备不支持画中画');
-                      return;
-                    }
-                    await PipUtils.updateAndroidPIPActions(
-                      playing: playerController.playing,
-                      danmakuEnabled: playerController.danmakuOn,
-                      width: playerController.playerWidth,
-                      height: playerController.playerHeight,
-                    );
-                    final bool entered = await PipUtils.enterAndroidPIPWindow(
-                      width: playerController.playerWidth,
-                      height: playerController.playerHeight,
-                    );
-                    if (!entered) {
-                      KazumiDialog.showToast(message: '进入画中画失败');
-                    }
-                  },
-                  tooltip: '画中画',
-                  icon: const Icon(Icons.picture_in_picture,
-                      color: Colors.white)),
-            // 弹幕开关
-            _buildDanmakuToggleButton(context),
-            // 追番
-            CollectButton(
-              bangumiItem: videoPageController.bangumiItem,
-              onOpen: () {
-                widget.cancelHideTimer();
-                playerController.canHidePlayerPanel = false;
-              },
-              onClose: () {
-                widget.cancelHideTimer();
-                widget.startHideTimer();
-                playerController.canHidePlayerPanel = true;
-              },
-            ),
-            MenuAnchor(
-              consumeOutsideTap: true,
-              onOpen: () {
-                widget.cancelHideTimer();
-                playerController.canHidePlayerPanel = false;
-              },
-              onClose: () {
-                widget.cancelHideTimer();
-                widget.startHideTimer();
-                playerController.canHidePlayerPanel = true;
-              },
-              builder: (BuildContext context, MenuController controller,
-                  Widget? child) {
-                return IconButton(
-                  onPressed: () {
-                    if (controller.isOpen) {
-                      controller.close();
+                onPressed: () async {
+                  if (isDesktop()) {
+                    if (videoPageController.isPip) {
+                      await PipUtils.exitDesktopPIPWindow();
                     } else {
                       // Size the PiP window to the video aspect ratio to
                       // avoid letterboxing.
@@ -652,168 +566,11 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
                     child: Text("视频比例"),
                   ),
                 ),
-                SubmenuButton(
-                  menuChildren: [
-                    for (final double i
-                        in defaultPlaySpeedList) ...<MenuItemButton>[
-                      MenuItemButton(
-                        onPressed: () async {
-                          await widget.setPlaybackSpeed(i);
-                        },
-                        child: Container(
-                          height: 48,
-                          constraints: BoxConstraints(minWidth: 112),
-                          child: Align(
-                            alignment: Alignment.centerLeft,
-                            child: Text(
-                              '${i}x',
-                              style: TextStyle(
-                                  color: i == playerController.playerSpeed
-                                      ? Theme.of(context).colorScheme.primary
-                                      : null),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                  child: Container(
-                    height: 48,
-                    constraints: BoxConstraints(minWidth: 112),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text("倍速"),
-                    ),
-                  ),
-                ),
-                SubmenuButton(
-                  menuChildren: List<MenuItemButton>.generate(
-                    3,
-                    (int index) => MenuItemButton(
-                      onPressed: () =>
-                          widget.handleSuperResolutionChange(index + 1),
-                      child: Container(
-                        height: 48,
-                        constraints: BoxConstraints(minWidth: 112),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            index + 1 == 1
-                                ? '关闭'
-                                : index + 1 == 2
-                                    ? '效率档'
-                                    : '质量档',
-                            style: TextStyle(
-                              color: playerController.superResolutionType ==
-                                      index + 1
-                                  ? Theme.of(context).colorScheme.primary
-                                  : null,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ),
-                  child: Container(
-                    height: 48,
-                    constraints: BoxConstraints(minWidth: 112),
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text("超分辨率"),
-                    ),
-                  ),
-                ),
-                if (videoPageController.roadList.length > 1)
-                  SubmenuButton(
-                    menuChildren: [
-                      for (int i = 0;
-                          i < videoPageController.roadList.length;
-                          i++)
-                        MenuItemButton(
-                          onPressed: () {
-                            if (i != videoPageController.currentRoad) {
-                              widget.changeEpisode(
-                                videoPageController.currentEpisode,
-                                currentRoad: i,
-                              );
-                            }
-                          },
-                          child: Container(
-                            height: 48,
-                            constraints: BoxConstraints(minWidth: 112),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                videoPageController.roadList[i].name,
-                                style: TextStyle(
-                                  color: i == videoPageController.currentRoad
-                                      ? Theme.of(context).colorScheme.primary
-                                      : null,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                    child: Container(
-                      height: 48,
-                      constraints: BoxConstraints(minWidth: 112),
-                      child: Align(
-                        alignment: Alignment.centerLeft,
-                        child: Text("切换源"),
-                      ),
-                    ),
-                  ),
-                SubmenuButton(
-                  menuChildren: [
-                    MenuItemButton(
-                      child: Container(
-                        height: 48,
-                        constraints: BoxConstraints(minWidth: 112),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                              "当前房间: ${playerController.syncplayRoom == '' ? '未加入' : playerController.syncplayRoom}"),
-                        ),
-                      ),
-                    ),
-                    MenuItemButton(
-                      child: Container(
-                        height: 48,
-                        constraints: BoxConstraints(minWidth: 112),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                              "网络延时: ${playerController.syncplayClientRtt}ms"),
-                        ),
-                      ),
-                    ),
-                    MenuItemButton(
-                      onPressed: () {
-                        widget.showSyncPlayRoomCreateDialog();
-                      },
-                      child: Container(
-                        height: 48,
-                        constraints: BoxConstraints(minWidth: 112),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text("加入房间"),
-                        ),
-                      ),
-                    ),
-                    MenuItemButton(
-                      onPressed: () {
-                        widget.showSyncPlayEndPointSwitchDialog();
-                      },
-                      child: Container(
-                        height: 48,
-                        constraints: BoxConstraints(minWidth: 112),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text("切换服务器"),
-                        ),
-                      ),
-                    ),
+              ),
+              SubmenuButton(
+                menuChildren: [
+                  for (final double i
+                      in defaultPlaySpeedList) ...<MenuItemButton>[
                     MenuItemButton(
                       onPressed: () async {
                         await widget.setPlaybackSpeed(i);
@@ -878,6 +635,50 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
                   ),
                 ),
               ),
+              if (videoPageController.roadList.length > 1)
+                SubmenuButton(
+                  menuChildren: [
+                    for (int i = 0;
+                        i < videoPageController.roadList.length;
+                        i++)
+                      MenuItemButton(
+                        onPressed: () {
+                          if (i !=
+                              videoPageController.selectedEpisode.road) {
+                            widget.changeEpisode(
+                              videoPageController.selectedEpisode.episode,
+                              currentRoad: i,
+                            );
+                          }
+                        },
+                        child: Container(
+                          height: 48,
+                          constraints: BoxConstraints(minWidth: 112),
+                          child: Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              videoPageController.roadList[i].name,
+                              style: TextStyle(
+                                color: i ==
+                                        videoPageController
+                                            .selectedEpisode.road
+                                    ? Theme.of(context).colorScheme.primary
+                                    : null,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                  ],
+                  child: Container(
+                    height: 48,
+                    constraints: BoxConstraints(minWidth: 112),
+                    child: Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text("切换源"),
+                    ),
+                  ),
+                ),
               MenuItemButton(
                 onPressed: () {
                   widget.showSyncPlayPanel();

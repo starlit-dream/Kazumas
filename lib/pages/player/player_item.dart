@@ -22,6 +22,7 @@ import 'package:kazumi/pages/video/video_controller.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:canvas_danmaku/canvas_danmaku.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
+import 'package:kazumi/pages/player/video_details_sheet.dart';
 import 'package:kazumi/bean/widget/capsule_progress_popup.dart';
 import 'package:kazumi/bean/widget/finish_review_sheet.dart';
 import 'package:kazumi/utils/finish_review_trigger.dart';
@@ -36,9 +37,13 @@ import 'package:kazumi/pages/player/controller/player_danmaku_controller.dart';
 import 'package:kazumi/pages/player/player_item_surface.dart';
 import 'package:mobx/mobx.dart' as mobx;
 import 'package:kazumi/pages/my/my_controller.dart';
+import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:saver_gallery/saver_gallery.dart';
 import 'package:kazumi/services/player/audio_controller.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
+import 'package:kazumi/utils/device.dart';
+import 'package:kazumi/services/platform/display_mode_service.dart';
+import 'package:kazumi/services/platform/player_menu_service.dart';
 import 'package:kazumi/request/bangumi.dart';
 
 class PlayerItem extends StatefulWidget {
@@ -83,6 +88,7 @@ class _PlayerItemState extends State<PlayerItem>
       widget.videoPageController;
   final HistoryController historyController = inject<HistoryController>();
   final MyController myController = inject<MyController>();
+  final CollectController collectController = inject<CollectController>();
   AudioController get _audioController => playerController.audioController;
   late final Map<String, PlayerShortcutAction> keyboardActions;
   late final Map<String, PlayerLongPressShortcutActions>
@@ -416,7 +422,7 @@ class _PlayerItemState extends State<PlayerItem>
           .syncBangumiCollectionType(videoPageController.bangumiItem);
       final episodeInfo = await BangumiHTTP.getBangumiEpisodeByID(
         videoPageController.bangumiItem.id,
-        videoPageController.actualEpisodeNumber,
+        videoPageController.selectedEpisode.episode,
       );
       if (episodeInfo.id == 0) {
         return;
@@ -514,9 +520,9 @@ class _PlayerItemState extends State<PlayerItem>
   void _maybePromptFinishReview() {
     if (!mounted) return;
     final isSyncPlayConnected =
-        playerController.syncplayController?.isConnected ?? false;
+        playerController.syncplay.syncplayController?.isConnected ?? false;
     if (isSyncPlayConnected) return;
-    final currentRoadIndex = videoPageController.currentRoad;
+    final currentRoadIndex = videoPageController.selectedEpisode.road;
     if (currentRoadIndex < 0 ||
         currentRoadIndex >= videoPageController.roadList.length) {
       return;
@@ -524,7 +530,7 @@ class _PlayerItemState extends State<PlayerItem>
     final episodes = videoPageController.roadList[currentRoadIndex].data.length;
     final shouldPrompt = FinishReviewTrigger.I.shouldPromptAfterEpisode(
       subjectId: videoPageController.bangumiItem.id,
-      currentEpisode: videoPageController.currentEpisode,
+      currentEpisode: videoPageController.selectedEpisode.episode,
       totalEpisodes: episodes,
     );
     if (!shouldPrompt) return;
@@ -539,59 +545,6 @@ class _PlayerItemState extends State<PlayerItem>
         autoTriggered: true,
       );
     });
-  }
-
-  //快捷键按下
-  bool handleShortcutDown(String keyLabel) {
-    for (final entry in keyboardShortcuts.entries) {
-      final func = entry.key;
-      final keys = entry.value;
-      if (keys.contains(keyLabel)) {
-        final action = keyboardActions[func];
-        if (action != null) {
-          action();
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  // 快捷键长按
-  bool handleShortcutLongPress(String keyLabel, String mode) {
-    for (final func in keyboardActionsNeedLongPress) {
-      final keys = keyboardShortcuts[func];
-      if (keys?.contains(keyLabel) == true) {
-        final action = keyboardActions[func + mode];
-        if (action != null) {
-          action();
-          return true;
-        }
-      }
-    }
-    return false;
-  }
-
-  bool _isTvActivateKey(LogicalKeyboardKey key) {
-    return key == LogicalKeyboardKey.select ||
-        key == LogicalKeyboardKey.enter ||
-        key == LogicalKeyboardKey.numpadEnter;
-  }
-
-  bool _isTvBackKey(LogicalKeyboardKey key) {
-    return key == LogicalKeyboardKey.goBack || key == LogicalKeyboardKey.escape;
-  }
-
-  bool _handleTvSurfaceActivate() {
-    if (playerController.showVideoController) {
-      return false;
-    }
-    displayVideoController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      FocusScope.of(context).nextFocus();
-    });
-    return true;
   }
 
   //上一集下一集动作
@@ -1315,9 +1268,13 @@ class _PlayerItemState extends State<PlayerItem>
 
   Timer getPlayerTimer() {
     return Timer.periodic(const Duration(seconds: 1), (timer) {
-      if (episodeNum != videoPageController.actualEpisodeNumber) {
-        episodeNum = videoPageController.actualEpisodeNumber;
+      // 检测剧集切换，重置标记状态并同步 Bangumi 进度
+      final currentEpisodeNum = videoPageController.selectedEpisode.episode;
+      if (currentEpisodeNum != _lastEpisodeNumber) {
+        _lastEpisodeNumber = currentEpisodeNum;
+        _currentEpisodeIdentity++;
         _episodeWatchedReported = false;
+        _watchedVerificationPending = false;
         unawaited(_syncBangumiProgressStateForCurrentEpisode());
       }
       playerController.syncPlaybackState();
@@ -1350,27 +1307,19 @@ class _PlayerItemState extends State<PlayerItem>
           duration: playerController.playback.playerDuration,
         );
       }
-      // 检测剧集切换，重置标记状态
-      final int currentEpisodeNum = videoPageController.actualEpisodeNumber;
-      if (currentEpisodeNum != _lastEpisodeNumber) {
-        _lastEpisodeNumber = currentEpisodeNum;
-        _currentEpisodeIdentity++;
-        _episodeWatchedReported = false;
-        _watchedVerificationPending = false;
-      }
       // 自动标记观看进度
       if (_watchedAutoRecord &&
           !_episodeWatchedReported &&
           !_watchedVerificationPending &&
           !_episodeStateSyncing &&
-          playerController.playerPlaying &&
+          playerController.playback.playerPlaying &&
           !videoPageController.loading &&
           !videoPageController.isOfflineMode &&
           BangumiAuth.isLoggedIn &&
-          playerController.duration.inMilliseconds > 0) {
+          playerController.playback.duration.inMilliseconds > 0) {
         final double progress =
-            playerController.currentPosition.inMilliseconds /
-                playerController.duration.inMilliseconds;
+            playerController.playback.currentPosition.inMilliseconds /
+                playerController.playback.duration.inMilliseconds;
         if (progress >= _watchedAutoRecordThreshold) {
           final int attemptEpisodeIdentity = _currentEpisodeIdentity;
           _episodeWatchedReported = true;
@@ -1382,20 +1331,22 @@ class _PlayerItemState extends State<PlayerItem>
         }
       }
       // 自动播放下一集
-      if (playerController.completed &&
-          videoPageController.currentEpisode <
+      if (playerController.playback.completed &&
+          videoPageController.selectedEpisode.episode <
               videoPageController
-                  .roadList[videoPageController.currentRoad].data.length &&
+                  .roadList[videoPageController.selectedEpisode.road]
+                  .data
+                  .length &&
           !videoPageController.loading &&
           autoPlayNext) {
         KazumiDialog.showToast(
             message:
-                '正在加载${videoPageController.roadList[videoPageController.currentRoad].identifier[videoPageController.currentEpisode]}');
+                '正在加载${videoPageController.roadList[videoPageController.selectedEpisode.road].identifier[videoPageController.selectedEpisode.episode]}');
         try {
           playerTimer!.cancel();
         } catch (_) {}
-        widget.changeEpisode(videoPageController.currentEpisode + 1,
-            currentRoad: videoPageController.currentRoad);
+        widget.changeEpisode(videoPageController.selectedEpisode.episode + 1,
+            currentRoad: videoPageController.selectedEpisode.road);
       }
       playerController.setSyncPlayCurrentPosition();
     });
@@ -1547,248 +1498,6 @@ class _PlayerItemState extends State<PlayerItem>
     );
   }
 
-  void showVideoInfo() async {
-    showModalBottomSheet(
-        isScrollControlled: true,
-        constraints: BoxConstraints(
-            maxHeight: MediaQuery.of(context).size.height * 3 / 4,
-            maxWidth: (Utils.isDesktop() || Utils.isTablet())
-                ? MediaQuery.of(context).size.width * 9 / 16
-                : MediaQuery.of(context).size.width),
-        clipBehavior: Clip.antiAlias,
-        context: context,
-        builder: (context) {
-          return DefaultTabController(
-            length: 2,
-            child: Scaffold(
-              body: Column(
-                children: [
-                  const PreferredSize(
-                    preferredSize: Size.fromHeight(kToolbarHeight),
-                    child: Material(
-                      child: TabBar(
-                        tabs: [
-                          Tab(text: '状态'),
-                          Tab(text: '日志'),
-                        ],
-                      ),
-                    ),
-                  ),
-                  Expanded(
-                    child: TabBarView(
-                      children: [
-                        videoInfoBody,
-                        videoDebugLogBody,
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        });
-  }
-
-  void showSyncPlayEndPointSwitchDialog() {
-    if (playerController.syncplayController != null) {
-      KazumiDialog.showToast(message: 'SyncPlay: 请先退出当前房间再切换服务器');
-      return;
-    }
-
-    final String defaultCustomSyncPlayEndPoint = '自定义服务器';
-    String customSyncPlayEndPoint = defaultCustomSyncPlayEndPoint;
-    String selectedSyncPlayEndPoint = setting.get(
-        SettingBoxKey.syncPlayEndPoint,
-        defaultValue: defaultSyncPlayEndPoint);
-
-    KazumiDialog.show(
-      builder: (context) {
-        return StatefulBuilder(builder: (context, setDialogState) {
-          List<String> syncPlayEndPoints = [];
-          syncPlayEndPoints.addAll(defaultSyncPlayEndPoints);
-          syncPlayEndPoints.add(customSyncPlayEndPoint);
-          if (!syncPlayEndPoints.contains(selectedSyncPlayEndPoint)) {
-            syncPlayEndPoints.add(selectedSyncPlayEndPoint);
-          }
-          return AlertDialog(
-            title: const Text('选择服务器'),
-            content: SingleChildScrollView(
-              child: ListBody(
-                children: <Widget>[
-                  DropdownButtonFormField<String>(
-                    decoration: InputDecoration(
-                      border: OutlineInputBorder(),
-                    ),
-                    isExpanded: true,
-                    initialValue: selectedSyncPlayEndPoint,
-                    items: syncPlayEndPoints.map((String value) {
-                      return DropdownMenuItem<String>(
-                        value: value,
-                        child: Text(
-                          value,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      );
-                    }).toList(),
-                    selectedItemBuilder: (context) {
-                      return syncPlayEndPoints.map((String value) {
-                        return Text(
-                          value,
-                          overflow: TextOverflow.ellipsis,
-                        );
-                      }).toList();
-                    },
-                    onChanged: (String? newValue) {
-                      if (newValue != null) {
-                        if (newValue == defaultCustomSyncPlayEndPoint) {
-                          final serverTextController = TextEditingController();
-                          KazumiDialog.show(
-                            builder: (context) {
-                              return AlertDialog(
-                                title: const Text('自定义服务器'),
-                                content: TextField(
-                                  controller: serverTextController,
-                                  decoration: const InputDecoration(
-                                    hintText: '请输入服务器地址',
-                                  ),
-                                ),
-                                actions: <Widget>[
-                                  TextButton(
-                                    child: const Text('取消'),
-                                    onPressed: () {
-                                      KazumiDialog.dismiss();
-                                    },
-                                  ),
-                                  TextButton(
-                                    child: const Text('确认'),
-                                    onPressed: () {
-                                      if (serverTextController
-                                              .text.isNotEmpty &&
-                                          !syncPlayEndPoints.contains(
-                                              serverTextController.text)) {
-                                        KazumiDialog.dismiss();
-                                        setDialogState(() {
-                                          customSyncPlayEndPoint =
-                                              serverTextController.text;
-                                          selectedSyncPlayEndPoint =
-                                              serverTextController.text;
-                                        });
-                                      } else {
-                                        KazumiDialog.showToast(
-                                            message: '服务器地址不能重复或为空');
-                                      }
-                                    },
-                                  ),
-                                ],
-                              );
-                            },
-                          );
-                        } else {
-                          setDialogState(() {
-                            selectedSyncPlayEndPoint = newValue;
-                          });
-                        }
-                      }
-                    },
-                  ),
-                ],
-              ),
-            ),
-            actions: <Widget>[
-              TextButton(
-                child: const Text('取消'),
-                onPressed: () {
-                  KazumiDialog.dismiss();
-                },
-              ),
-              TextButton(
-                child: const Text('确认'),
-                onPressed: () {
-                  setting.put(
-                    SettingBoxKey.syncPlayEndPoint,
-                    selectedSyncPlayEndPoint,
-                  );
-                  KazumiDialog.dismiss();
-                },
-              ),
-            ],
-          );
-        });
-      },
-    );
-  }
-
-  void showSyncPlayRoomCreateDialog() {
-    final formKey = GlobalKey<FormState>();
-    final TextEditingController roomController = TextEditingController();
-    final TextEditingController usernameController = TextEditingController();
-    KazumiDialog.show(builder: (BuildContext context) {
-      return AlertDialog(
-        title: const Text('加入房间'),
-        content: Form(
-          key: formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextFormField(
-                controller: roomController,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  labelText: '房间号',
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '请输入房间号';
-                  }
-                  final regex = RegExp(r'^[0-9]{6,10}$');
-                  if (!regex.hasMatch(value)) {
-                    return '房间号需要6到10位数字';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: usernameController,
-                decoration: const InputDecoration(
-                  labelText: '用户名',
-                ),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return '请输入用户名';
-                  }
-                  final regex = RegExp(r'^[a-zA-Z]{4,12}$');
-                  if (!regex.hasMatch(value)) {
-                    return '用户名必须为4到12位英文字符';
-                  }
-                  return null;
-                },
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () {
-              KazumiDialog.dismiss();
-            },
-            child: const Text('取消'),
-          ),
-          TextButton(
-            onPressed: () {
-              if (formKey.currentState!.validate()) {
-                KazumiDialog.dismiss();
-                playerController.createSyncPlayRoom(roomController.text,
-                    usernameController.text, widget.changeEpisode);
-              }
-            },
-            child: const Text('确定'),
-          ),
-        ],
-      );
-    });
-  }
-
   /// Used to decide which panel is used.
   /// It's too complicated to write these in conditional sentence.
   /// * true: use [PlayerItemPanel]
@@ -1916,13 +1625,12 @@ class _PlayerItemState extends State<PlayerItem>
     autoPlayNext = GStorage.getSetting(SettingsKeys.autoPlayNext);
     backgroundPlayback = GStorage.getSetting(SettingsKeys.backgroundPlayback);
     brightnessVolumeGesture =
-        setting.get(SettingBoxKey.brightnessVolumeGesture, defaultValue: true);
+        GStorage.getSetting(SettingsKeys.brightnessVolumeGesture);
     _watchedPopupEnabled =
-        setting.get(SettingBoxKey.watchedPopupEnabled, defaultValue: true);
-    _watchedAutoRecord =
-        setting.get(SettingBoxKey.watchedAutoRecord, defaultValue: false);
-    _watchedAutoRecordThreshold = setting
-        .get(SettingBoxKey.watchedAutoRecordThreshold, defaultValue: 0.9);
+        GStorage.getSetting(SettingsKeys.watchedPopupEnabled);
+    _watchedAutoRecord = GStorage.getSetting(SettingsKeys.watchedAutoRecord);
+    _watchedAutoRecordThreshold =
+        GStorage.getSetting(SettingsKeys.watchedAutoRecordThreshold);
     unawaited(_bindAudioService());
     playerTimer = getPlayerTimer();
     windowManager.addListener(this);
@@ -2005,42 +1713,12 @@ class _PlayerItemState extends State<PlayerItem>
                       isBlocked: () => _openPlayerMenuCount > 0,
                     ),
                     Center(
-                        child: Focus(
-                            // workaround for #461
-                            // I don't know why, but the focus node will break popscope.
-                            focusNode: widget.keyboardFocus,
-                            autofocus: true,
-                            canRequestFocus: MediaQuery.sizeOf(context).width <=
-                                    MediaQuery.sizeOf(context).height ||
-                                !videoPageController.showTabBody,
-                            onKeyEvent: (focusNode, KeyEvent event) {
-                              bool handled = false;
-                              final logicalKey = event.logicalKey;
-                              final keyLabel = logicalKey.keyLabel.isNotEmpty
-                                  ? logicalKey.keyLabel
-                                  : logicalKey.debugName ?? '';
-                              if (event is KeyDownEvent) {
-                                handled = handleShortcutDown(keyLabel);
-                                if (!handled && _isTvActivateKey(logicalKey)) {
-                                  handled = _handleTvSurfaceActivate();
-                                }
-                                if (!handled && _isTvBackKey(logicalKey)) {
-                                  widget.onBackPressed(context);
-                                  handled = true;
-                                }
-                              } else if (event is KeyRepeatEvent) {
-                                handled =
-                                    handleShortcutLongPress(keyLabel, "Repeat");
-                              } else if (event is KeyUpEvent) {
-                                handled =
-                                    handleShortcutLongPress(keyLabel, "Up");
-                              }
-                              return handled
-                                  ? KeyEventResult.handled
-                                  : KeyEventResult.ignored;
-                            },
-                            child: const PlayerItemSurface())),
-                    (playerController.isBuffering ||
+                      key: _videoSurfaceKey,
+                      child: PlayerItemSurface(
+                        playerController: playerController,
+                      ),
+                    ),
+                    (playerController.playback.isBuffering ||
                             videoPageController.loading)
                         ? const Positioned.fill(
                             child: Center(
@@ -2134,67 +1812,78 @@ class _PlayerItemState extends State<PlayerItem>
                         ),
                       ),
                     ),
-                    // 播放器控制面板
-                    (needFullPanel(context))
-                        ? PlayerItemPanel(
-                            onBackPressed: widget.onBackPressed,
-                            setPlaybackSpeed: setPlaybackSpeed,
-                            showDanmakuSwitch: showDanmakuSwitch,
-                            changeEpisode: widget.changeEpisode,
-                            openMenu: widget.openMenu,
-                            handleFullscreen: handleFullscreen,
-                            handleProgressBarDragStart:
-                                handleProgressBarDragStart,
-                            handleProgressBarDragEnd: handleProgressBarDragEnd,
-                            handleSuperResolutionChange:
-                                handleSuperResolutionChange,
-                            handlePreNextEpisode: handlePreNextEpisode,
-                            animationController: animationController!,
-                            keyboardFocus: widget.keyboardFocus,
-                            sendDanmaku: widget.sendDanmaku,
-                            startHideTimer: startHideTimer,
-                            cancelHideTimer: cancelHideTimer,
-                            handleDanmaku: handleDanmaku,
-                            showVideoInfo: showVideoInfo,
-                            showSyncPlayRoomCreateDialog:
-                                showSyncPlayRoomCreateDialog,
-                            showSyncPlayEndPointSwitchDialog:
-                                showSyncPlayEndPointSwitchDialog,
-                            showDanmakuDestinationPickerAndSend:
-                                widget.showDanmakuDestinationPickerAndSend,
-                            handleScreenShot: handleScreenshot,
-                            pauseForTimedShutdown: widget.pauseForTimedShutdown,
-                            disableAnimations: widget.disableAnimations,
-                            skipOP: skipOP,
-                          )
-                        : SmallestPlayerItemPanel(
-                            onBackPressed: widget.onBackPressed,
-                            setPlaybackSpeed: setPlaybackSpeed,
-                            showDanmakuSwitch: showDanmakuSwitch,
-                            handleFullscreen: handleFullscreen,
-                            handleProgressBarDragStart:
-                                handleProgressBarDragStart,
-                            handleProgressBarDragEnd: handleProgressBarDragEnd,
-                            handleSuperResolutionChange:
-                                handleSuperResolutionChange,
-                            animationController: animationController!,
-                            keyboardFocus: widget.keyboardFocus,
-                            handleHove: _handleHove,
-                            startHideTimer: startHideTimer,
-                            cancelHideTimer: cancelHideTimer,
-                            handleDanmaku: handleDanmaku,
-                            showVideoInfo: showVideoInfo,
-                            showSyncPlayRoomCreateDialog:
-                                showSyncPlayRoomCreateDialog,
-                            showSyncPlayEndPointSwitchDialog:
-                                showSyncPlayEndPointSwitchDialog,
-                            pauseForTimedShutdown: widget.pauseForTimedShutdown,
-                            changeEpisode: widget.changeEpisode,
-                            disableAnimations: widget.disableAnimations,
-                            skipOP: skipOP,
-                          ),
-                    // 胶囊弹窗由 _markEpisodeWatched() 在标记成功后自动弹出
-                    // 播放器手势控制
+                    Positioned.fill(
+                      child: PlayerScreenshotFeedbackOverlay(
+                        animation: _screenshotFeedbackAnimation,
+                      ),
+                    ),
+                    (Platform.isAndroid &&
+                            (videoPageController.isPip || _pipEnterRequested))
+                        ? const SizedBox.shrink()
+                        : (needFullPanel(context))
+                            ? PlayerItemPanel(
+                                playerController: playerController,
+                                videoPageController: videoPageController,
+                                onBackPressed: widget.onBackPressed,
+                                setPlaybackSpeed: setPlaybackSpeed,
+                                showDanmakuSwitch: showDanmakuSwitch,
+                                changeEpisode: widget.changeEpisode,
+                                toggleMenu: widget.toggleMenu,
+                                handleFullscreen: handleFullscreen,
+                                enterAndroidPictureInPicture:
+                                    enterAndroidPictureInPicture,
+                                handleProgressBarDragStart:
+                                    handleProgressBarDragStart,
+                                handleProgressBarSeek: handleProgressBarSeek,
+                                handleSuperResolutionChange:
+                                    handleSuperResolutionChange,
+                                handlePreNextEpisode: handlePreNextEpisode,
+                                panelVisibilityController:
+                                    _panelVisibilityController,
+                                keyboardFocus: widget.keyboardFocus,
+                                sendDanmaku: widget.sendDanmaku,
+                                acquirePlayerPanelHold: acquirePlayerPanelHold,
+                                onMenuVisibilityChanged:
+                                    _handlePlayerMenuVisibilityChanged,
+                                handleDanmaku: handleDanmaku,
+                                showVideoInfo: showVideoInfo,
+                                showSyncPlayPanel: showSyncPlayPanel,
+                                showDanmakuDestinationPickerAndSend:
+                                    widget.showDanmakuDestinationPickerAndSend,
+                                pauseForTimedShutdown:
+                                    widget.pauseForTimedShutdown,
+                                disableAnimations: widget.disableAnimations,
+                                handleScreenShot: handleScreenshot,
+                                skipOP: skipOP,
+                              )
+                            : SmallestPlayerItemPanel(
+                                playerController: playerController,
+                                videoPageController: videoPageController,
+                                onBackPressed: widget.onBackPressed,
+                                setPlaybackSpeed: setPlaybackSpeed,
+                                showDanmakuSwitch: showDanmakuSwitch,
+                                handleFullscreen: handleFullscreen,
+                                enterAndroidPictureInPicture:
+                                    enterAndroidPictureInPicture,
+                                handleProgressBarDragStart:
+                                    handleProgressBarDragStart,
+                                handleProgressBarSeek: handleProgressBarSeek,
+                                handleSuperResolutionChange:
+                                    handleSuperResolutionChange,
+                                panelVisibilityController:
+                                    _panelVisibilityController,
+                                acquirePlayerPanelHold: acquirePlayerPanelHold,
+                                onMenuVisibilityChanged:
+                                    _handlePlayerMenuVisibilityChanged,
+                                handleDanmaku: handleDanmaku,
+                                showVideoInfo: showVideoInfo,
+                                showSyncPlayPanel: showSyncPlayPanel,
+                                pauseForTimedShutdown:
+                                    widget.pauseForTimedShutdown,
+                                changeEpisode: widget.changeEpisode,
+                                disableAnimations: widget.disableAnimations,
+                                skipOP: skipOP,
+                              ),
                     Positioned.fill(
                       left: 16,
                       top: 25,
