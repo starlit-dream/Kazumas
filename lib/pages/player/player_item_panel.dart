@@ -682,6 +682,7 @@ class _PlayerItemPanelState extends State<PlayerItemPanel> {
               child: Row(
                 children: [
                   IconButton(
+                    // TV 遥控器适配：面板每次打开时把焦点定位到播放键。
                     autofocus: playerController.panel.showVideoController,
                     tooltip: playerController.playback.playing ? '暂停' : '播放',
                     onPressed: () => playerController.playOrPause(),

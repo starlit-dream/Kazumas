@@ -647,6 +647,10 @@ class _PlayerItemState extends State<PlayerItem>
   void _toggleVideoController() {
     if (playerController.panel.showVideoController) {
       hideVideoController();
+      // TV 遥控器：面板收起后把焦点还给播放区快捷键作用域。
+      if (FocusManager.instance.primaryFocus != widget.keyboardFocus) {
+        widget.keyboardFocus.requestFocus();
+      }
     } else {
       displayVideoController();
     }
@@ -1711,6 +1715,12 @@ class _PlayerItemState extends State<PlayerItem>
                       actions: keyboardActions,
                       longPressActions: keyboardLongPressActions,
                       isBlocked: () => _openPlayerMenuCount > 0,
+                      // 面板打开且焦点落在面板控件上时，方向键让位给焦点
+                      // 遍历，TV 遥控器才能用 D-pad 在面板内移动焦点。
+                      isNavigationBlocked: () =>
+                          playerController.panel.showVideoController &&
+                          FocusManager.instance.primaryFocus !=
+                              widget.keyboardFocus,
                     ),
                     Center(
                       key: _videoSurfaceKey,

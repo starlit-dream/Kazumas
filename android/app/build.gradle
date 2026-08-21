@@ -58,6 +58,8 @@ android {
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        // Android TV 适配：声明电视支持，Play 商店可分发到 TV 设备。
+        resValue "bool", "isTV", "true"
     }
 
     // Signing config for release builds

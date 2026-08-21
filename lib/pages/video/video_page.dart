@@ -64,6 +64,8 @@ class _VideoPageState extends State<VideoPage>
   StreamSubscription<String>? _logSubscription;
   final FocusNode keyboardFocus =
       FocusNode(debugLabel: 'Video player shortcut scope');
+  final FocusNode _tvPanelFocusNode =
+      FocusNode(debugLabel: 'TV panel activator', skipTraversal: true);
 
   ScrollController scrollController = ScrollController();
   late GridObserverController observerController;
@@ -275,6 +277,7 @@ class _VideoPageState extends State<VideoPage>
     }
     DisplayModeService.unlockScreenRotation();
     keyboardFocus.dispose();
+    _tvPanelFocusNode.dispose();
     tabController.dispose();
     TimedShutdownService().cancel();
     super.dispose();
@@ -289,6 +292,9 @@ class _VideoPageState extends State<VideoPage>
   @override
   void onWindowLeaveFullScreen() {
     videoPageController.handleOnExitFullScreen();
+    if (_tvPanelFocusNode.hasFocus) {
+      keyboardFocus.requestFocus();
+    }
   }
 
   void showDebugConsole() {
@@ -431,6 +437,30 @@ class _VideoPageState extends State<VideoPage>
     if (animation.value == 0.0 && animation.status != AnimationStatus.reverse) {
       animation.forward();
     }
+  }
+
+  /// TV 遥控器确定键：面板未显示时呼出面板并把焦点移交给面板内的
+  /// 可聚焦控件；面板已显示时，若焦点在面板控件上则不拦截（让控件
+  /// 处理确定键），若焦点已回到播放区则收起面板。
+  KeyEventResult _handleTvActivate() {
+    final bool panelVisible = playerController.panel.showVideoController;
+    final bool focusOnSurface =
+        FocusManager.instance.primaryFocus == keyboardFocus;
+    if (panelVisible) {
+      if (!focusOnSurface) {
+        return KeyEventResult.ignored;
+      }
+      keyboardFocus.requestFocus();
+      return KeyEventResult.handled;
+    }
+    playerController.panel.showVideoController = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _tvPanelFocusNode.context == null) {
+        return;
+      }
+      FocusScope.of(_tvPanelFocusNode.context!).requestFocus(_tvPanelFocusNode);
+    });
+    return KeyEventResult.handled;
   }
 
   void onBackPressed(BuildContext context) async {
@@ -645,8 +675,8 @@ class _VideoPageState extends State<VideoPage>
                               if (event is! KeyDownEvent) {
                                 return KeyEventResult.ignored;
                               }
-                              // TV 遥控器适配：确定键显示/聚焦控制栏，
-                              // 返回键退回上一页。
+                              // TV 遥控器适配：确定键呼出/隐藏控制栏并把焦点
+                              // 交给面板中的可聚焦控件，返回键逐层退出。
                               final bool isTvActivate =
                                   logicalKey == LogicalKeyboardKey.select ||
                                       logicalKey == LogicalKeyboardKey.enter ||
@@ -656,21 +686,15 @@ class _VideoPageState extends State<VideoPage>
                                   logicalKey == LogicalKeyboardKey.goBack ||
                                       logicalKey == LogicalKeyboardKey.escape;
                               if (isTvActivate) {
-                                if (playerController
-                                    .panel.showVideoController) {
-                                  return KeyEventResult.ignored;
-                                }
-                                playerController.panel.showVideoController =
-                                    true;
-                                WidgetsBinding.instance
-                                    .addPostFrameCallback((_) {
-                                  if (mounted) {
-                                    FocusScope.of(context).nextFocus();
-                                  }
-                                });
-                                return KeyEventResult.handled;
+                                return _handleTvActivate();
                               }
                               if (isTvBack) {
+                                // Escape 在桌面端承担退出全屏，保持现有行为。
+                                if (logicalKey == LogicalKeyboardKey.escape &&
+                                    (isDesktop() ||
+                                        videoPageController.isFullscreen)) {
+                                  return KeyEventResult.ignored;
+                                }
                                 onBackPressed(context);
                                 return KeyEventResult.handled;
                               }
@@ -893,20 +917,25 @@ class _VideoPageState extends State<VideoPage>
         Positioned.fill(
           child: playerController.playback.loading
               ? Container()
-              : PlayerItem(
-                  playerController: playerController,
-                  videoPageController: videoPageController,
-                  toggleMenu: _toggleTabBodyAnimated,
-                  showMenuImmediately: _showTabBodyImmediately,
-                  hideMenuImmediately: _hideTabBodyImmediately,
-                  changeEpisode: changeEpisode,
-                  onBackPressed: onBackPressed,
-                  keyboardFocus: keyboardFocus,
-                  sendDanmaku: sendDanmaku,
-                  disableAnimations: disableAnimations,
-                  showDanmakuDestinationPickerAndSend:
-                      showDanmakuDestinationPickerAndSend,
-                  pauseForTimedShutdown: pauseForTimedShutdown,
+              : Focus(
+                  // TV 面板焦点作用域：确定键呼出面板后，焦点由此节点
+                  // 落入面板内部的 autofocus 控件（播放/暂停键）。
+                  focusNode: _tvPanelFocusNode,
+                  child: PlayerItem(
+                    playerController: playerController,
+                    videoPageController: videoPageController,
+                    toggleMenu: _toggleTabBodyAnimated,
+                    showMenuImmediately: _showTabBodyImmediately,
+                    hideMenuImmediately: _hideTabBodyImmediately,
+                    changeEpisode: changeEpisode,
+                    onBackPressed: onBackPressed,
+                    keyboardFocus: keyboardFocus,
+                    sendDanmaku: sendDanmaku,
+                    disableAnimations: disableAnimations,
+                    showDanmakuDestinationPickerAndSend:
+                        showDanmakuDestinationPickerAndSend,
+                    pauseForTimedShutdown: pauseForTimedShutdown,
+                  ),
                 ),
         ),
       ],

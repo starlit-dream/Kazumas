@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Android TV 适配：在电视启动器中展示应用图标与横幅。
+     banner 资源指向 assets/images/logo/logo_rounded.png（同 ic_launcher）。 -->
+<resources>
+    <drawable name="tv_banner">@mipmap/ic_launcher</drawable>
+</resources>

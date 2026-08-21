@@ -413,6 +413,7 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
     return Row(
       children: [
         IconButton(
+          // TV 遥控器适配：面板每次打开时把焦点定位到播放键。
           autofocus: playerController.panel.showVideoController,
           icon: PlayPauseIcon(
             iconColor: Colors.white,
@@ -474,6 +475,7 @@ class _SmallestPlayerItemPanelState extends State<SmallestPlayerItemPanel> {
       child: Row(
         children: [
           IconButton(
+            // TV 遥控器适配：面板每次打开时把焦点定位到返回键。
             autofocus: playerController.panel.showVideoController,
             color: Colors.white,
             icon: const Icon(Icons.arrow_back_rounded),

@@ -30,6 +30,7 @@ class PlayerKeyboardShortcuts extends StatefulWidget {
     required this.actions,
     this.longPressActions = const <String, PlayerLongPressShortcutActions>{},
     this.isBlocked,
+    this.isNavigationBlocked,
     this.shortcuts,
   });
 
@@ -37,6 +38,11 @@ class PlayerKeyboardShortcuts extends StatefulWidget {
   final Map<String, PlayerShortcutAction> actions;
   final Map<String, PlayerLongPressShortcutActions> longPressActions;
   final bool Function()? isBlocked;
+
+  /// When non-null and true, arrow-key shortcuts (forward/rewind/volume) are
+  /// suppressed so TV remote D-pad keys reach the focused control for focus
+  /// traversal instead of being consumed as playback shortcuts.
+  final bool Function()? isNavigationBlocked;
   final Map<String, List<String>>? shortcuts;
 
   @override
@@ -103,6 +109,13 @@ class _PlayerKeyboardShortcutsState extends State<PlayerKeyboardShortcuts> {
       return KeyEventResult.ignored;
     }
 
+    // TV 遥控器 D-pad 键被复用为快进/快退/音量快捷键；焦点落在面板
+    // 控件上时让位给焦点遍历，否则面板无法用方向键导航。
+    if (_isArrowKeyAction(actionName) &&
+        (widget.isNavigationBlocked?.call() ?? false)) {
+      return KeyEventResult.ignored;
+    }
+
     if (event is KeyDownEvent) {
       final action = widget.actions[actionName];
       if (action == null) {
@@ -160,6 +173,13 @@ class _PlayerKeyboardShortcutsState extends State<PlayerKeyboardShortcuts> {
       }
     }
     return null;
+  }
+
+  bool _isArrowKeyAction(String actionName) {
+    return actionName == 'forward' ||
+        actionName == 'rewind' ||
+        actionName == 'volumeup' ||
+        actionName == 'volumedown';
   }
 
   void _releaseAllLongPressShortcuts() {
