@@ -284,7 +284,7 @@ class _BangumiInfoCardVState extends State<BangumiInfoCardV> {
                                         ? '${widget.bangumiItem.ratingScore}'
                                         : '***',
                                     style: TextStyle(
-                                      fontSize: 20,
+                                      fontSize: 16,
                                       fontWeight: FontWeight.bold,
                                       color:
                                           Theme.of(context).colorScheme.primary,

@@ -3,7 +3,7 @@ import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
-import 'package:kazumi/utils/utils.dart';
+import 'package:kazumi/utils/device.dart';
 
 // 视频卡片 - 垂直布局
 class BangumiCardV extends StatelessWidget {
@@ -33,7 +33,7 @@ class BangumiCardV extends StatelessWidget {
               );
               return;
             }
-            Modular.to.pushNamed('/info/', arguments: bangumiItem);
+            context.pushNamed('/info/', arguments: bangumiItem);
           },
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -76,16 +76,19 @@ class BangumiContent extends StatelessWidget {
 
   final BangumiItem bangumiItem;
 
-  @override
-  Widget build(BuildContext context) {
-    final ts = MediaQuery.textScalerOf(context);
-
-    final int maxTextLines = Utils.isDesktop()
+  static int maxTextLinesFor(BuildContext context) {
+    return isDesktop()
         ? 3
-        : (Utils.isTablet() &&
+        : (isTablet() &&
                 MediaQuery.of(context).orientation == Orientation.landscape)
             ? 3
             : 2;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final ts = MediaQuery.textScalerOf(context);
+    final int maxTextLines = maxTextLinesFor(context);
 
     return Expanded(
       child: Padding(

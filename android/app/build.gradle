@@ -32,9 +32,9 @@ if (keystorePropertiesFile.exists()) {
 android {
     namespace "com.starlitdream.kazumas"
     compileSdk flutter.compileSdkVersion
-    // Pin ndk version to 21.3.6528147 to fix android build warning
-    // The build warning throws by gradle plugin, when the ndk is older than gradle plugin required version
-    ndkVersion "27.2.12479018"
+    // Use the highest NDK required by the native plugins. Newer NDKs remain
+    // backward compatible with plugins that declare an older version.
+    ndkVersion "28.2.13676358"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -58,6 +58,8 @@ android {
         targetSdkVersion flutter.targetSdkVersion
         versionCode flutterVersionCode.toInteger()
         versionName flutterVersionName
+        // Android TV 适配：声明电视支持，Play 商店可分发到 TV 设备。
+        resValue "bool", "isTV", "true"
     }
 
     // Signing config for release builds

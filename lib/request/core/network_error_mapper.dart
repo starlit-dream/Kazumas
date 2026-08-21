@@ -15,10 +15,11 @@ class NetworkErrorMapper {
           stackTrace: error.stackTrace,
         );
       case DioExceptionType.badResponse:
+        final statusCode = error.response?.statusCode;
         return NetworkException(
           type: NetworkExceptionType.badResponse,
           message: '服务器异常，请稍后重试！',
-          statusCode: error.response?.statusCode,
+          statusCode: statusCode,
           rawError: error,
           stackTrace: error.stackTrace,
         );
@@ -54,6 +55,13 @@ class NetworkErrorMapper {
         return NetworkException(
           type: NetworkExceptionType.sendTimeout,
           message: '发送请求超时，请检查网络设置',
+          rawError: error,
+          stackTrace: error.stackTrace,
+        );
+      case DioExceptionType.transformTimeout:
+        return NetworkException(
+          type: NetworkExceptionType.parseError,
+          message: '响应解析超时，请稍后重试！',
           rawError: error,
           stackTrace: error.stackTrace,
         );

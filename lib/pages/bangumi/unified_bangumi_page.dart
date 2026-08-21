@@ -1,14 +1,14 @@
-import 'package:card_settings_ui/card_settings_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
 import 'package:kazumi/bean/card/network_img_layer.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
+import 'package:kazumi/bean/settings/settings_list.dart';
 import 'package:kazumi/modules/bangumi/sync_priority.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
-import 'package:kazumi/utils/bangumi_sync_service.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/sync/bangumi_sync_service.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 /// 统一的 Bangumi 设置页面，融合认证登录与状态同步
@@ -709,7 +709,7 @@ class _UnifiedBangumiPageState extends State<UnifiedBangumiPage> {
                 description: Text('点击追番按钮触发即时同步时显示提示框', style: TextStyle(fontFamily: fontFamily)),
                 initialValue: bangumiImmediateSyncToastEnable,
               ),
-              SettingsTile.navigation(
+              SettingsTile(
                 onPressed: (_) {
                   if (syncPriorityMenuController.isOpen) {
                     syncPriorityMenuController.close();

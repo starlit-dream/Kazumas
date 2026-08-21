@@ -13,14 +13,14 @@
 
 <table>
   <tr>
-    <td><img alt="" src="static/screenshot/img_1.png"></td>
-    <td><img alt="" src="static/screenshot/img_2.png"></td>
-    <td><img alt="" src="static/screenshot/img_3.png"></td>
+    <td><img alt="homepage" src="static/screenshot/img_1.png"></td>
+    <td><img alt="timetable" src="static/screenshot/img_2.png"></td>
+    <td><img alt="details" src="static/screenshot/img_3.png"></td>
   <tr>
   <tr>
-    <td><img alt="" src="static/screenshot/img_4.png"></td>
-    <td><img alt="" src="static/screenshot/img_5.png"></td>
-    <td><img alt="" src="static/screenshot/img_6.png"></td>
+    <td><img alt="selection-page" src="static/screenshot/img_4.png"></td>
+    <td><img alt="rules-mange" src="static/screenshot/img_5.png"></td>
+    <td><img alt="rules-edit" src="static/screenshot/img_6.png"></td>
   <tr>
 </table>
 
@@ -134,6 +134,10 @@ A: 本项目编译需要良好的网络环境。除了 Google 托管的 Flutter 
 
 </details>
 
+## 开发
+
+欢迎您提交 PR！在开始之前, 请阅读 [贡献指引](static/doc/CONTRIBUTING.md) 以了解我们对 PR 和 AI 参与辅助开发的规定。
+
 ## 美术资源
 
 本项目图标来自 [Yuquanaaa](https://www.pixiv.net/users/66219277) 发表在 [Pixiv](https://www.pixiv.net/artworks/116666979) 上的作品。
@@ -148,7 +152,7 @@ A: 本项目编译需要良好的网络环境。除了 Google 托管的 Flutter 
 
 使用本项目需遵守所在地法律法规，不得进行任何侵犯第三方知识产权的行为。因使用本项目而产生的数据和缓存应在 24 小时内清除，超出 24 小时的使用需获得相关权利人的授权。
 
-## 隐私政策 (Privacy policy)
+## 隐私政策
 
 不收集任何用户数据，不使用任何遥测组件。
 

@@ -3,32 +3,35 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_modular/flutter_modular.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/pages/my/my_controller.dart';
 import 'package:kazumi/request/api.dart';
 import 'package:kazumi/utils/mortis.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/utils/utils.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 class AboutPage extends StatefulWidget {
-  const AboutPage({super.key});
+  const AboutPage({
+    super.key,
+    required this.controller,
+  });
+
+  final MyController controller;
 
   @override
   State<AboutPage> createState() => _AboutPageState();
 }
 
 class _AboutPageState extends State<AboutPage> {
-  final Box setting = GStorage.setting;
-  final MyController myController = Modular.get<MyController>();
   final List<String> exitBehaviorTitles = const ['退出 Kazumas', '最小化至托盘', '每次都询问'];
 
+  MyController get myController => widget.controller;
   late bool autoUpdate;
-  late int exitBehavior =
-      setting.get(SettingBoxKey.exitBehavior, defaultValue: 2);
+  late bool checkPluginUpdateOnStartup;
+  late int exitBehavior = GStorage.getSetting(SettingsKeys.exitBehavior);
   double _cacheSizeMB = -1;
 
   String get _appVersionDisplay => '${Api.version}+${Api.buildNumber}';
@@ -36,7 +39,9 @@ class _AboutPageState extends State<AboutPage> {
   @override
   void initState() {
     super.initState();
-    autoUpdate = setting.get(SettingBoxKey.autoUpdate, defaultValue: true);
+    autoUpdate = GStorage.getSetting(SettingsKeys.autoUpdate);
+    checkPluginUpdateOnStartup =
+        GStorage.getSetting(SettingsKeys.checkPluginUpdateOnStartup);
     _getCacheSize();
   }
 
@@ -330,7 +335,7 @@ class _AboutPageState extends State<AboutPage> {
           value: autoUpdate,
           onChanged: (value) async {
             autoUpdate = value;
-            await setting.put(SettingBoxKey.autoUpdate, value);
+            await GStorage.putSetting(SettingsKeys.autoUpdate, value);
             if (mounted) {
               setState(() {});
             }
@@ -341,7 +346,7 @@ class _AboutPageState extends State<AboutPage> {
           title: '错误日志',
           subtitle: '查看运行日志',
           onTap: () {
-            Modular.to.pushNamed('/settings/about/logs');
+            context.pushNamed('/settings/about/logs');
           },
         ),
         _buildActionTile(
@@ -358,7 +363,7 @@ class _AboutPageState extends State<AboutPage> {
           title: '开源许可证',
           subtitle: '查看依赖许可证',
           onTap: () {
-            Modular.to.pushNamed('/settings/about/license');
+            context.pushNamed('/settings/about/license');
           },
         ),
       ],
@@ -423,7 +428,7 @@ class _AboutPageState extends State<AboutPage> {
             initialValue: exitBehavior,
             onSelected: (value) async {
               exitBehavior = value;
-              await setting.put(SettingBoxKey.exitBehavior, value);
+              await GStorage.putSetting(SettingsKeys.exitBehavior, value);
               if (mounted) {
                 setState(() {});
               }

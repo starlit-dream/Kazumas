@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/pages/info/info_controller.dart';
 
 /// 播放器内弹出的胶囊样式已看确认弹窗（左下侧），3 秒后自动消失且可拖动消除

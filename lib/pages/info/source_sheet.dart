@@ -1,749 +1,480 @@
 import 'package:flutter/material.dart';
-import 'package:kazumi/utils/utils.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:flutter_modular/flutter_modular.dart';
+import 'package:mobx/mobx.dart' show reaction, ReactionDisposer;
 import 'package:kazumi/pages/info/info_controller.dart';
-import 'package:kazumi/utils/logger.dart';
+import 'package:kazumi/pages/info/source_alias_dialog.dart';
+import 'package:kazumi/pages/info/source_captcha_flow.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
+import 'package:kazumi/bean/dialog/material_bottom_sheet.dart';
+import 'package:kazumi/bean/widget/split_list_row.dart';
 import 'package:kazumi/plugins/plugins_controller.dart';
 import 'package:kazumi/plugins/plugins.dart';
-import 'package:kazumi/pages/video/video_controller.dart';
+import 'package:kazumi/modules/search/plugin_search_module.dart';
+import 'package:kazumi/pages/video/video_playback_args.dart';
+import 'package:kazumi/services/plugin/rule_engine_models.dart'
+    show RuleCancelToken;
 import 'package:url_launcher/url_launcher.dart';
-import 'package:kazumi/request/apis/query_manager.dart';
+import 'package:kazumi/services/plugin/plugin_search_service.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
-import 'package:kazumi/bean/widget/error_widget.dart';
-import 'dart:async';
-import 'dart:convert';
-import 'package:kazumi/providers/captcha/captcha_provider.dart';
-import 'package:kazumi/plugins/anti_crawler_config.dart';
+import 'package:kazumi/utils/device.dart';
 
 class SourceSheet extends StatefulWidget {
   const SourceSheet({
     super.key,
-    required this.tabController,
     required this.infoController,
   });
 
-  final TabController tabController;
   final InfoController infoController;
 
   @override
   State<SourceSheet> createState() => _SourceSheetState();
 }
 
-class _SourceSheetState extends State<SourceSheet>
-    with SingleTickerProviderStateMixin {
-  final VideoPageController videoPageController =
-      Modular.get<VideoPageController>();
-  final CollectController collectController = Modular.get<CollectController>();
-  final PluginsController pluginsController = Modular.get<PluginsController>();
-  late String keyword;
+class _SourceSheetState extends State<SourceSheet> {
+  final CollectController _collectController = inject<CollectController>();
+  final PluginsController _pluginsController = inject<PluginsController>();
 
-  /// Concurrent query manager
-  QueryManager? queryManager;
+  late final String _keyword;
+  late final PluginSearchService _searchService;
+  late final SourceCaptchaFlow _captchaFlow;
 
-  /// Captcha solving provider (created on demand)
-  CaptchaProvider? _captchaProvider;
-
-  /// Timeout timer waiting for captcha verification result
-  Timer? _captchaVerifyTimer;
+  String? _expandedSource;
+  ReactionDisposer? _autoExpandDisposer;
 
   @override
   void initState() {
-    keyword = widget.infoController.bangumiItem.nameCn == ''
+    super.initState();
+    _keyword = widget.infoController.bangumiItem.nameCn == ''
         ? widget.infoController.bangumiItem.name
         : widget.infoController.bangumiItem.nameCn;
-    queryManager = QueryManager(infoController: widget.infoController);
-    queryManager?.queryAllSource(keyword);
-    super.initState();
+    _searchService = PluginSearchService(
+      infoController: widget.infoController,
+      pluginsController: _pluginsController,
+    );
+    _searchService.queryAllSource(_keyword);
+    _captchaFlow = SourceCaptchaFlow(
+      onVerified: _showVerifiedResult,
+      onCancelled: (plugin) => _querySource(_keyword, plugin.name),
+    );
+    // One shot: whichever source reports results first opens, and from then on
+    // the open card only moves when tapped.
+    _autoExpandDisposer = reaction<String?>(
+      (_) => _firstSourceWithResults(),
+      (name) {
+        if (name == null) return;
+        setState(() => _expandedSource = name);
+        _stopAutoExpand();
+      },
+    );
   }
 
   @override
   void dispose() {
-    queryManager?.cancel();
-    queryManager = null;
-    _captchaProvider?.dispose();
-    _captchaProvider = null;
-    _captchaVerifyTimer?.cancel();
-    _captchaVerifyTimer = null;
+    _stopAutoExpand();
+    _searchService.cancel();
+    _captchaFlow.dispose();
     super.dispose();
   }
 
-  /// 根据插件的验证类型分发到对应的验证对话框
-  void showAntiCrawlerDialog(Plugin plugin) {
-    switch (plugin.antiCrawlerConfig.captchaType) {
-      case CaptchaType.autoClickButton:
-        showButtonClickDialog(plugin);
-        break;
-      default:
-        showCaptchaDialog(plugin);
-    }
+  void _stopAutoExpand() {
+    _autoExpandDisposer?.call();
+    _autoExpandDisposer = null;
   }
 
-  void showCaptchaDialog(Plugin plugin) {
-    final captchaImageNotifier = ValueNotifier<String?>(null);
-    final submittingNotifier = ValueNotifier<bool>(false);
-    final TextEditingController codeController = TextEditingController();
+  /// Callbacks can outlive the sheet — a countdown ending after it closes, a
+  /// dialog dismissed behind it — and a cancelled service still clears the
+  /// page's results on its way to doing nothing.
+  void _querySource(String keyword, String pluginName) {
+    if (!mounted) return;
+    _searchService.querySource(keyword, pluginName);
+  }
 
-    /// flag whether verification has passed, used to distinguish normal dismissal from cancellation in onDismiss
-    bool verified = false;
-
-    _captchaProvider?.dispose();
-    _captchaProvider = CaptchaProvider();
-
-    final searchUrl = plugin.searchURL
-        .replaceAll('@keyword', Uri.encodeQueryComponent(keyword));
-
-    _captchaProvider!.loadForCaptcha(
-      searchUrl,
-      plugin.antiCrawlerConfig.captchaImage,
-      inputXpath: plugin.antiCrawlerConfig.captchaInput,
+  void _showVerifiedResult(Plugin plugin, String pageHtml) {
+    if (_searchService.applyHarvestedSearchResult(plugin.name, pageHtml)) {
+      KazumiDialog.showToast(message: '验证成功');
+      return;
+    }
+    // Counting down before re-querying keeps the retry from tripping the rate
+    // limit the verification just cleared.
+    KazumiDialog.showTimedSuccessDialog(
+      title: '验证成功',
+      message: '即将重新检索',
+      onComplete: () => _querySource(_keyword, plugin.name),
     );
+  }
 
-    final imageSub = _captchaProvider!.onCaptchaImageUrl.listen((url) {
-      if (url != null) captchaImageNotifier.value = url;
+  /// A plugin can publish more than one response: an alias search adds to what
+  /// the first pass found.
+  List<SearchItem> _resultsFor(String pluginName) {
+    final results = <SearchItem>[];
+    for (final response in widget.infoController.pluginSearchResponseList) {
+      if (response.pluginName == pluginName) {
+        results.addAll(response.data);
+      }
+    }
+    return results;
+  }
+
+  String? _firstSourceWithResults() {
+    for (final plugin in _pluginsController.pluginList) {
+      if (_resultsFor(plugin.name).isNotEmpty) return plugin.name;
+    }
+    return null;
+  }
+
+  void _toggleSource(String pluginName) {
+    setState(() {
+      _expandedSource = _expandedSource == pluginName ? null : pluginName;
     });
+    _stopAutoExpand();
+  }
 
-    Future<void> doSubmit() async {
-      if (submittingNotifier.value) return;
-      if (codeController.text.trim().isEmpty) {
-        KazumiDialog.showToast(message: '请输入验证码');
-        return;
-      }
-      submittingNotifier.value = true;
-      await _captchaProvider?.submitCaptcha(
-        captchaCode: codeController.text.trim(),
-        inputXpath: plugin.antiCrawlerConfig.captchaInput,
-        buttonXpath: plugin.antiCrawlerConfig.captchaButton,
-        pluginName: plugin.name,
-        onVerified: () {
-          _captchaVerifyTimer?.cancel();
-          _captchaVerifyTimer = null;
-          verified = true;
-          KazumiDialog.dismiss();
-          // show a 3s countdown progress dialog before re-querying,
-          // to avoid triggering rate limits immediately after verification.
-          KazumiDialog.showTimedSuccessDialog(
-            title: '验证成功',
-            message: '正在重新检索，请稍候…',
-            onComplete: () => queryManager?.querySource(keyword, plugin.name),
+  void _openInBrowser(Plugin plugin) {
+    final targetUrl = plugin.usesApiSearch
+        ? plugin.baseUrl
+        : plugin.searchURL.replaceFirst(
+            '@keyword',
+            Uri.encodeQueryComponent(_keyword),
           );
-        },
+    launchUrl(Uri.parse(targetUrl), mode: LaunchMode.externalApplication);
+  }
+
+  Future<void> _openSearchItem(Plugin plugin, SearchItem searchItem) async {
+    final cancelToken = RuleCancelToken();
+    KazumiDialog.showLoading(
+      msg: '获取中',
+      barrierDismissible: isDesktop(),
+      onDismiss: cancelToken.cancel,
+    );
+    try {
+      final roads = await plugin.queryChapterRoads(
+        searchItem.src,
+        cancelToken: cancelToken,
       );
-      // submitCaptcha completes after the JS button click is fired.
-      // Start the 8-second timeout only NOW, waiting for the webview to
-      // detect the captcha disappearing and call onVerified.
-      if (!verified) {
-        _captchaVerifyTimer?.cancel();
-        _captchaVerifyTimer = Timer(const Duration(seconds: 8), () {
-          if (!verified) {
-            KazumiDialog.dismiss();
-          }
-        });
+      if (roads.isEmpty) {
+        throw ChapterErrorException(plugin.name);
       }
-    }
-
-    KazumiDialog.show(
-      onDismiss: () async {
-        _captchaVerifyTimer?.cancel();
-        _captchaVerifyTimer = null;
-        // Cancel the image subscription before disposing the notifier to
-        // prevent late stream events writing to an already-disposed notifier.
-        imageSub.cancel();
-        codeController.dispose();
-        captchaImageNotifier.dispose();
-        submittingNotifier.dispose();
-        // Capture the current provider instance locally NOW, before any await.
-        // Without this, an async gap could allow _captchaProvider to be
-        // replaced (or nulled by _SourceSheetState.dispose()), causing the
-        // closure to dispose the wrong/already-disposed instance.
-        final provider = _captchaProvider;
-        _captchaProvider = null;
-        if (!verified) {
-          await provider?.saveAndUnload(plugin.name);
-          provider?.dispose();
-          queryManager?.querySource(keyword, plugin.name);
-        } else {
-          provider?.dispose();
-        }
-      },
-      builder: (context) {
-        return Dialog(
-          clipBehavior: Clip.antiAlias,
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: SizedBox(
-              width: 400,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Text(
-                    '验证码验证',
-                    style: Theme.of(context).textTheme.titleLarge,
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    '${plugin.name} 需要验证码验证',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 20),
-                  ValueListenableBuilder<String?>(
-                    valueListenable: captchaImageNotifier,
-                    builder: (context, imageUrl, _) {
-                      if (imageUrl == null) {
-                        return const Column(
-                          children: [
-                            CircularProgressIndicator(),
-                            SizedBox(height: 12),
-                            Text('正在加载验证码图片...'),
-                          ],
-                        );
-                      }
-                      return ValueListenableBuilder<bool>(
-                        valueListenable: submittingNotifier,
-                        builder: (context, isSubmitting, _) {
-                          return Column(
-                            children: [
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(8),
-                                child: Image.memory(
-                                  base64Decode(imageUrl.split(',').last),
-                                  height: 80,
-                                  fit: BoxFit.contain,
-                                  errorBuilder: (context, error, _) =>
-                                      const Text('图片解码失败'),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              TextField(
-                                controller: codeController,
-                                autofocus: true,
-                                enabled: !isSubmitting,
-                                decoration: const InputDecoration(
-                                  labelText: '请输入验证码',
-                                  border: OutlineInputBorder(),
-                                ),
-                                onSubmitted:
-                                    isSubmitting ? null : (_) => doSubmit(),
-                              ),
-                            ],
-                          );
-                        },
-                      );
-                    },
-                  ),
-                  const SizedBox(height: 20),
-                  ListenableBuilder(
-                    listenable: Listenable.merge(
-                        [captchaImageNotifier, submittingNotifier]),
-                    builder: (context, _) {
-                      final isImageLoading = captchaImageNotifier.value == null;
-                      final isSubmitting = submittingNotifier.value;
-                      final isDisabled = isImageLoading || isSubmitting;
-                      return Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          TextButton(
-                            onPressed: () => KazumiDialog.dismiss(),
-                            child: Text(
-                              '取消',
-                              style: TextStyle(
-                                  color: Theme.of(context).colorScheme.outline),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          FilledButton(
-                            onPressed: isDisabled ? null : doSubmit,
-                            child: isSubmitting
-                                ? const SizedBox(
-                                    width: 18,
-                                    height: 18,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                    ),
-                                  )
-                                : const Text('提交'),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  void showButtonClickDialog(Plugin plugin) {
-    /// flag whether onVerified was fired by the auto-click flow (cookies already saved + page unloaded)
-    bool autoVerified = false;
-
-    _captchaProvider?.dispose();
-    _captchaProvider = CaptchaProvider();
-
-    final searchUrl = plugin.searchURL
-        .replaceAll('@keyword', Uri.encodeQueryComponent(keyword));
-
-    void onVerified() {
-      if (autoVerified) return;
-      autoVerified = true;
       KazumiDialog.dismiss();
-      // show a 3s countdown progress dialog before re-querying
-      KazumiDialog.showTimedSuccessDialog(
-        title: '验证成功',
-        message: '正在重新检索，请稍候…',
-        onComplete: () => queryManager?.querySource(keyword, plugin.name),
-      );
-    }
-
-    _captchaProvider!.loadForButtonClick(
-      url: searchUrl,
-      buttonXpath: plugin.antiCrawlerConfig.captchaButton,
-      pluginName: plugin.name,
-      onVerified: onVerified,
-    );
-
-    KazumiDialog.show(
-      onDismiss: () async {
-        // Capture the current provider instance locally before any await.
-        final provider = _captchaProvider;
-        _captchaProvider = null;
-        if (autoVerified) {
-          // auto-verify already saved cookies and unloaded the page
-          provider?.dispose();
-        } else {
-          // save whatever cookies are present and unload the page
-          await provider?.saveAndUnload(plugin.name);
-          provider?.dispose();
-          queryManager?.querySource(keyword, plugin.name);
-        }
-      },
-      builder: (context) => Dialog(
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: SizedBox(
-            width: 400,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Text(
-                  '自动验证中',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${plugin.name} 正在自动完成验证，请稍候',
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 24),
-                const CircularProgressIndicator(),
-                const SizedBox(height: 12),
-                Text(
-                  '已检测到验证按钮并模拟点击，等待验证通过…',
-                  style: Theme.of(context).textTheme.bodyMedium,
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 20),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () => KazumiDialog.dismiss(),
-                    child: Text(
-                      '取消',
-                      style: TextStyle(
-                          color: Theme.of(context).colorScheme.outline),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
+      if (!mounted) return;
+      context.pushNamed(
+        '/video/',
+        arguments: OnlineVideoPlaybackArgs(
+          bangumiItem: widget.infoController.bangumiItem,
+          plugin: plugin,
+          title: searchItem.name,
+          src: searchItem.src,
+          roads: roads,
         ),
-      ),
-    );
+      );
+    } catch (_) {
+      KazumiLogger().w("PluginSearchService: failed to query video playlist");
+      KazumiDialog.dismiss();
+    }
   }
 
-  Widget buildPluginView(Plugin plugin, List<Widget> cardList) {
-    final status = widget.infoController.pluginSearchStatus[plugin.name];
-    if (status == 'pending') {
-      return const Center(child: CircularProgressIndicator());
+  /// Searching under an alias also saves it for the next visit.
+  void _searchAlias(String pluginName, String alias) {
+    if (!widget.infoController.bangumiItem.alias.contains(alias)) {
+      widget.infoController.bangumiItem.alias.add(alias);
+      _collectController.updateLocalCollect(widget.infoController.bangumiItem);
     }
-    if (status == 'captcha') {
-      return GeneralErrorWidget(
-        errMsg: '${plugin.name} 需要验证码验证',
-        actions: [
-          GeneralErrorButton(
-            onPressed: () => showAntiCrawlerDialog(plugin),
-            text: '进行验证',
-          ),
-          GeneralErrorButton(
-            onPressed: () => queryManager?.querySource(keyword, plugin.name),
-            text: '重试',
-          ),
-        ],
-      );
-    }
-    if (status == 'noResult') {
-      return GeneralErrorWidget(
-        errMsg: '${plugin.name} 无结果 使用别名或左右滑动以切换到其他视频来源',
-        actions: [
-          GeneralErrorButton(
-            onPressed: () => showAliasSearchDialog(plugin.name),
-            text: '别名检索',
-          ),
-          GeneralErrorButton(
-            onPressed: () => showCustomSearchDialog(plugin.name),
-            text: '手动检索',
-          ),
-        ],
-      );
-    }
-    if (status == 'error') {
-      return GeneralErrorWidget(
-        errMsg: '${plugin.name} 检索失败 重试或左右滑动以切换到其他视频来源',
-        actions: [
-          GeneralErrorButton(
-            onPressed: () => queryManager?.querySource(keyword, plugin.name),
-            text: '重试',
-          ),
-        ],
-      );
-    }
-    return Column(
-      children: [
-        Expanded(
-          child: ListView(
-            children: cardList,
-          ),
-        ),
-        if (cardList.isNotEmpty) showSupplementarySearchEntry(plugin.name),
-      ],
-    );
+    _querySource(alias, pluginName);
   }
 
-  /// 构建结果列表底部补充检索入口，便于已有结果不准确时换用别名或手动检索关键词
-  Widget showSupplementarySearchEntry(String pluginName) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 4, 18, 12),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Align(
-            alignment: Alignment.centerRight,
-            child: Wrap(
-              crossAxisAlignment: WrapCrossAlignment.center,
-              spacing: 2,
-              runSpacing: 4,
-              children: [
-                Text(
-                  '结果不准确？',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context)
-                            .textTheme
-                            .bodySmall
-                            ?.color
-                            ?.withValues(alpha: 0.75),
-                      ),
-                ),
-                TextButton(
-                  style: TextButton.styleFrom(
-                    minimumSize: Size.zero,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    textStyle: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  onPressed: () => showAliasSearchDialog(pluginName),
-                  child: const Text('别名检索'),
-                ),
-                TextButton(
-                  style: TextButton.styleFrom(
-                    minimumSize: Size.zero,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 10),
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                    visualDensity: VisualDensity.compact,
-                    textStyle: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  onPressed: () => showCustomSearchDialog(pluginName),
-                  child: const Text('手动检索'),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void showAliasSearchDialog(String pluginName) {
+  void _showAliasPicker(String pluginName) {
     if (widget.infoController.bangumiItem.alias.isEmpty) {
       KazumiDialog.showToast(message: '无可用别名，试试手动检索');
       return;
     }
-    final aliasNotifier =
-        ValueNotifier<List<String>>(widget.infoController.bangumiItem.alias);
-    KazumiDialog.show(builder: (context) {
-      return Dialog(
-        clipBehavior: Clip.antiAlias,
-        child: SizedBox(
-          width: 560,
-          child: ValueListenableBuilder<List<String>>(
-            valueListenable: aliasNotifier,
-            builder: (context, aliasList, child) {
-              return ListView(
-                shrinkWrap: true,
-                children: aliasList.asMap().entries.map((entry) {
-                  final index = entry.key;
-                  final alias = entry.value;
-                  return ListTile(
-                    title: Text(alias),
-                    trailing: IconButton(
-                      onPressed: () {
-                        KazumiDialog.show(
-                          builder: (context) {
-                            return AlertDialog(
-                              title: const Text('删除确认'),
-                              content: const Text('删除后无法恢复，确认要永久删除这个别名吗？'),
-                              actions: [
-                                TextButton(
-                                  onPressed: () {
-                                    KazumiDialog.dismiss();
-                                  },
-                                  child: Text(
-                                    '取消',
-                                    style: TextStyle(
-                                        color: Theme.of(context)
-                                            .colorScheme
-                                            .outline),
-                                  ),
-                                ),
-                                TextButton(
-                                  onPressed: () {
-                                    KazumiDialog.dismiss();
-                                    aliasList.removeAt(index);
-                                    aliasNotifier.value = List.from(aliasList);
-                                    collectController.updateLocalCollect(
-                                        widget.infoController.bangumiItem);
-                                    if (aliasList.isEmpty) {
-                                      // pop whole dialog when empty
-                                      Navigator.of(context).pop();
-                                    }
-                                  },
-                                  child: const Text('确认'),
-                                ),
-                              ],
-                            );
-                          },
-                        );
-                      },
-                      icon: Icon(Icons.delete),
-                    ),
-                    onTap: () {
-                      KazumiDialog.dismiss();
-                      queryManager?.querySource(alias, pluginName);
-                    },
-                  );
-                }).toList(),
-              );
-            },
-          ),
-        ),
-      );
-    });
+    showAliasPickerDialog(
+      aliases: widget.infoController.bangumiItem.alias,
+      onAliasSelected: (alias) {
+        KazumiDialog.dismiss();
+        _querySource(alias, pluginName);
+      },
+      onAliasesChanged: () => _collectController
+          .updateLocalCollect(widget.infoController.bangumiItem),
+    );
   }
 
-  void showCustomSearchDialog(String pluginName) {
-    KazumiDialog.show(
-      builder: (context) {
-        final TextEditingController textController = TextEditingController();
-        return AlertDialog(
-          title: const Text('输入别名'),
-          content: TextField(
-            controller: textController,
-            onSubmitted: (keyword) {
-              if (textController.text != '') {
-                widget.infoController.bangumiItem.alias
-                    .add(textController.text);
-                KazumiDialog.dismiss();
-                queryManager?.querySource(textController.text, pluginName);
-              }
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                KazumiDialog.dismiss();
-              },
-              child: Text(
-                '取消',
-                style: TextStyle(color: Theme.of(context).colorScheme.outline),
-              ),
+  void _showCustomKeyword(String pluginName) => showCustomKeywordDialog(
+        onSubmit: (keyword) => _searchAlias(pluginName, keyword),
+      );
+
+  /// One source, collapsed to a row until opened. The header sits a surface
+  /// step above its result rows — and shifts to `secondaryContainer` while
+  /// open — so a rule never reads as one of the titles it returned.
+  Widget _buildSourceCard(Plugin plugin, List<SearchItem> results, bool open) {
+    final searching = widget.infoController.pluginSearchStatus[plugin.name] ==
+        PluginSearchStatus.pending;
+    final colorScheme = Theme.of(context).colorScheme;
+
+    final body = <({Widget child, VoidCallback? onTap})>[];
+    if (open && !searching) {
+      if (results.isEmpty) {
+        body.add((child: _buildActionsRow(plugin), onTap: null));
+      } else {
+        for (final result in results) {
+          body.add((
+            child: _buildResultRow(result),
+            onTap: () => _openSearchItem(plugin, result),
+          ));
+        }
+      }
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AnimatedSize(
+        duration: splitListMotionDuration,
+        curve: splitListMotionCurve,
+        alignment: Alignment.topCenter,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SplitListRow(
+              color: open
+                  ? colorScheme.secondaryContainer
+                  : colorScheme.surfaceContainer,
+              topRadius: splitListOuterRadius,
+              bottomRadius:
+                  body.isEmpty ? splitListOuterRadius : splitListInnerRadius,
+              onTap: () => _toggleSource(plugin.name),
+              child: _buildSourceHeader(plugin, results, searching, open),
             ),
-            TextButton(
-              onPressed: () {
-                if (textController.text != '') {
-                  widget.infoController.bangumiItem.alias
-                      .add(textController.text);
-                  collectController
-                      .updateLocalCollect(widget.infoController.bangumiItem);
-                  KazumiDialog.dismiss();
-                  queryManager?.querySource(textController.text, pluginName);
-                }
-              },
-              child: const Text(
-                '确认',
+            for (var i = 0; i < body.length; i++) ...[
+              const SizedBox(height: splitListRowGap),
+              SplitListRow(
+                bottomRadius: i == body.length - 1
+                    ? splitListOuterRadius
+                    : splitListInnerRadius,
+                onTap: body[i].onTap,
+                child: body[i].child,
+              ),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Status rides in trailing text rather than a leading icon: rows whose
+  /// siblings lack one end up with misaligned names.
+  ({String text, Color? color}) _sourceSummary(
+      Plugin plugin, List<SearchItem> results, bool searching) {
+    if (searching) return (text: '检索中', color: null);
+    if (results.isNotEmpty) return (text: '${results.length} 条', color: null);
+    final error = Theme.of(context).colorScheme.error;
+    return switch (widget.infoController.pluginSearchStatus[plugin.name]) {
+      PluginSearchStatus.error => (text: '检索失败', color: error),
+      PluginSearchStatus.captcha => (text: '需要验证', color: error),
+      _ => (text: '无结果', color: null),
+    };
+  }
+
+  Widget _buildSourceHeader(
+      Plugin plugin, List<SearchItem> results, bool searching, bool open) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final summary = _sourceSummary(plugin, results, searching);
+    final onColor = open ? colorScheme.onSecondaryContainer : null;
+    // Buttons under a result list get hit by thumbs reaching for the last row,
+    // so a source with results keeps its actions up here instead.
+    final hasMenu = open && !searching && results.isNotEmpty;
+    return Padding(
+      // Both branches land on 56dp, matching a result row: the menu's
+      // IconButton is 48dp on its own.
+      padding: hasMenu
+          ? const EdgeInsets.fromLTRB(18, 4, 14, 4)
+          : const EdgeInsets.fromLTRB(18, 18, 18, 18),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              plugin.name,
+              style: theme.textTheme.titleSmall?.copyWith(color: onColor),
+            ),
+          ),
+          Text(
+            summary.text,
+            style: theme.textTheme.labelMedium?.copyWith(
+              color: summary.color ?? onColor ?? colorScheme.onSurfaceVariant,
+            ),
+          ),
+          if (searching) ...[
+            const SizedBox(width: 10),
+            const SizedBox.square(
+              dimension: 16,
+              child: CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ] else ...[
+            if (hasMenu)
+              PopupMenuButton<VoidCallback>(
+                tooltip: '${plugin.name} 的更多操作',
+                icon: Icon(Icons.more_vert_rounded, size: 20, color: onColor),
+                onSelected: (action) => action(),
+                itemBuilder: (context) => [
+                  PopupMenuItem(
+                    value: () => _showAliasPicker(plugin.name),
+                    child: const Text('别名检索'),
+                  ),
+                  PopupMenuItem(
+                    value: () => _showCustomKeyword(plugin.name),
+                    child: const Text('手动检索'),
+                  ),
+                  PopupMenuItem(
+                    value: () => _openInBrowser(plugin),
+                    child: const Text('在浏览器中打开'),
+                  ),
+                ],
+              )
+            else
+              const SizedBox(width: 10),
+            AnimatedRotation(
+              turns: open ? 0.5 : 0,
+              duration: splitListMotionDuration,
+              curve: splitListMotionCurve,
+              child: Icon(
+                Icons.expand_more_rounded,
+                size: 20,
+                color: onColor ?? colorScheme.onSurfaceVariant,
               ),
             ),
           ],
-        );
-      },
+        ],
+      ),
     );
+  }
+
+  Widget _buildResultRow(SearchItem searchItem) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(18, 18, 16, 18),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(searchItem.name, style: theme.textTheme.bodyMedium),
+          ),
+          const SizedBox(width: 8),
+          Icon(
+            Icons.play_arrow_rounded,
+            size: 20,
+            color: theme.colorScheme.primary,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildActionsRow(Plugin plugin) {
+    final theme = Theme.of(context);
+    final actions = <Widget>[];
+    final String hint;
+    switch (widget.infoController.pluginSearchStatus[plugin.name]) {
+      case PluginSearchStatus.captcha:
+        hint = '这个源要求先完成验证';
+        actions.add(
+            _primaryAction('进行验证', () => _captchaFlow.start(plugin, _keyword)));
+        actions.add(_action('重试', () => _retry(plugin)));
+      case PluginSearchStatus.error:
+        hint = '这个源没能返回结果';
+        actions.add(_primaryAction('重试', () => _retry(plugin)));
+      default:
+        hint = '换个关键词再试试';
+        actions
+            .add(_primaryAction('别名检索', () => _showAliasPicker(plugin.name)));
+        actions.add(_action('手动检索', () => _showCustomKeyword(plugin.name)));
+    }
+    actions.add(_action('浏览器打开', () => _openInBrowser(plugin)));
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Padding(
+            padding: const EdgeInsets.only(left: 4, bottom: 6),
+            child: Text(
+              hint,
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          Wrap(spacing: 8, runSpacing: 4, children: actions),
+        ],
+      ),
+    );
+  }
+
+  void _retry(Plugin plugin) => _querySource(_keyword, plugin.name);
+
+  Widget _primaryAction(String label, VoidCallback onPressed) =>
+      FilledButton.tonal(onPressed: onPressed, child: Text(label));
+
+  Widget _action(String label, VoidCallback onPressed) =>
+      TextButton(onPressed: onPressed, child: Text(label));
+
+  /// Always plugin order, never ranked by what came back: a source can fill
+  /// up long after the search settles — a captcha source does once verified
+  /// — and ranking would slide the card someone just acted on out from
+  /// under them.
+  List<Widget> _buildSourceCards() {
+    final cards = <Widget>[];
+    for (final plugin in _pluginsController.pluginList) {
+      cards.add(_buildSourceCard(
+        plugin,
+        _resultsFor(plugin.name),
+        _expandedSource == plugin.name,
+      ));
+    }
+    cards.add(const SafeArea(top: false, child: SizedBox(height: 12)));
+    return cards;
+  }
+
+  String _progressDescription() {
+    final plugins = _pluginsController.pluginList;
+    final done = plugins
+        .where((plugin) =>
+            widget.infoController.pluginSearchStatus[plugin.name] !=
+            PluginSearchStatus.pending)
+        .length;
+    final found = plugins.fold<int>(
+        0, (sum, plugin) => sum + _resultsFor(plugin.name).length);
+    if (done < plugins.length) {
+      return '「$_keyword」· 检索中 $done/${plugins.length}';
+    }
+    return '「$_keyword」· $found 条结果';
   }
 
   @override
   Widget build(BuildContext context) {
-    return DefaultTabController(
-      length: 3,
-      child: Scaffold(
-        body: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: TabBar(
-                    isScrollable: true,
-                    tabAlignment: TabAlignment.center,
-                    dividerHeight: 0,
-                    controller: widget.tabController,
-                    tabs: pluginsController.pluginList
-                        .map(
-                          (plugin) => Observer(
-                            builder: (context) {
-                              return Tab(
-                                child: Row(
-                                  children: [
-                                    Text(
-                                      plugin.name,
-                                      overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(
-                                          fontSize: Theme.of(context)
-                                              .textTheme
-                                              .titleMedium!
-                                              .fontSize,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .onSurface),
-                                    ),
-                                    const SizedBox(width: 5.0),
-                                    Container(
-                                      width: 8.0,
-                                      height: 8.0,
-                                      decoration: BoxDecoration(
-                                        color: switch (widget.infoController
-                                            .pluginSearchStatus[plugin.name]) {
-                                          'success' => Colors.green,
-                                          'noResult' => Colors.orange,
-                                          'captcha' => Colors.blue,
-                                          'error' => Colors.red,
-                                          _ => Colors.grey,
-                                        },
-                                        shape: BoxShape.circle,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              );
-                            },
-                          ),
-                        )
-                        .toList(),
-                  ),
-                ),
-                IconButton(
-                  onPressed: () {
-                    int currentIndex = widget.tabController.index;
-                    launchUrl(
-                      Uri.parse(pluginsController
-                          .pluginList[currentIndex].searchURL
-                          .replaceFirst(
-                              '@keyword', Uri.encodeQueryComponent(keyword))),
-                      mode: LaunchMode.externalApplication,
-                    );
-                  },
-                  icon: const Icon(Icons.open_in_browser_rounded),
-                ),
-                const SizedBox(width: 4),
-              ],
-            ),
-            const Divider(height: 1),
-            Expanded(
-              child: Observer(
-                builder: (context) => TabBarView(
-                  controller: widget.tabController,
-                  children: List.generate(pluginsController.pluginList.length,
-                      (pluginIndex) {
-                    var plugin = pluginsController.pluginList[pluginIndex];
-                    var cardList = <Widget>[];
-                    for (var searchResponse
-                        in widget.infoController.pluginSearchResponseList) {
-                      if (searchResponse.pluginName == plugin.name) {
-                        for (var searchItem in searchResponse.data) {
-                          cardList.add(
-                            Card(
-                              elevation: 0,
-                              margin: const EdgeInsets.only(
-                                  left: 10, right: 10, top: 10),
-                              child: InkWell(
-                                borderRadius: BorderRadius.circular(12),
-                                onTap: () async {
-                                  KazumiDialog.showLoading(
-                                    msg: '获取中',
-                                    barrierDismissible: Utils.isDesktop(),
-                                    onDismiss: () {
-                                      videoPageController.cancelQueryRoads();
-                                    },
-                                  );
-                                  videoPageController.bangumiItem =
-                                      widget.infoController.bangumiItem;
-                                  videoPageController.currentPlugin = plugin;
-                                  videoPageController.title = searchItem.name;
-                                  videoPageController.src = searchItem.src;
-                                  try {
-                                    await videoPageController.queryRoads(
-                                        searchItem.src, plugin.name);
-                                    KazumiDialog.dismiss();
-                                    Modular.to.pushNamed('/video/');
-                                  } catch (_) {
-                                    KazumiLogger().w(
-                                        "QueryManager: failed to query video playlist");
-                                    KazumiDialog.dismiss();
-                                  }
-                                },
-                                child: Padding(
-                                  padding: const EdgeInsets.all(20),
-                                  child: Text(searchItem.name),
-                                ),
-                              ),
-                            ),
-                          );
-                        }
-                      }
-                    }
-                    return buildPluginView(plugin, cardList);
-                  }),
+    return Scaffold(
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      body: Observer(
+        builder: (context) {
+          // Must be read here, not behind a nested Builder: mobx only tracks
+          // reads made while the Observer's own builder runs.
+          final cards = _buildSourceCards();
+          return Column(
+            children: [
+              MaterialBottomSheetHeader(
+                title: '选择播放源',
+                description: _progressDescription(),
+                onClose: () => Navigator.of(context).pop(),
+              ),
+              Expanded(
+                child: ListView.builder(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  itemCount: cards.length,
+                  itemBuilder: (context, index) => cards[index],
                 ),
               ),
-            )
-          ],
-        ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -6,14 +6,18 @@ import 'package:kazumi/bean/dialog/dialog_helper.dart';
 import 'package:kazumi/bean/widget/collect_button.dart';
 import 'package:kazumi/modules/history/history_module.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
-import 'package:kazumi/pages/history/history_controller.dart';
-import 'package:kazumi/pages/video/video_controller.dart';
-import 'package:kazumi/plugins/plugins.dart';
-import 'package:kazumi/plugins/plugins_controller.dart';
-import 'package:kazumi/utils/logger.dart';
-import 'package:kazumi/utils/utils.dart';
+import 'package:kazumi/services/player/history_playback_service.dart';
+import 'package:kazumi/services/plugin/rule_engine_models.dart'
+    show RuleCancelToken;
+import 'package:kazumi/utils/device.dart';
+import 'package:kazumi/utils/date_time.dart';
 
-// 视频历史记录卡片 - 水平布局
+String _historySourceText(String entryKind) {
+  return HistoryEntryKind.normalize(entryKind) == HistoryEntryKind.offline
+      ? '缓存'
+      : '在线';
+}
+
 class BangumiHistoryCardV extends StatefulWidget {
   const BangumiHistoryCardV({
     super.key,
@@ -31,51 +35,42 @@ class BangumiHistoryCardV extends StatefulWidget {
 }
 
 class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
-  final VideoPageController videoPageController =
-      Modular.get<VideoPageController>();
-  final PluginsController pluginsController = Modular.get<PluginsController>();
-  final HistoryController historyController = Modular.get<HistoryController>();
-  final CollectController collectController = Modular.get<CollectController>();
+  final CollectController collectController = inject<CollectController>();
+  final HistoryPlaybackService _playbackService =
+      inject<HistoryPlaybackService>();
+
+  RuleCancelToken? _queryRoadsCancelToken;
+
+  @override
+  void dispose() {
+    _queryRoadsCancelToken?.cancel();
+    super.dispose();
+  }
 
   Future<void> _onTap() async {
     if (widget.showDelete) {
       KazumiDialog.showToast(message: '编辑模式');
       return;
     }
+    _queryRoadsCancelToken?.cancel();
+    final cancelToken = RuleCancelToken();
+    _queryRoadsCancelToken = cancelToken;
     KazumiDialog.showLoading(
       msg: '获取中',
-      barrierDismissible: Utils.isDesktop(),
-      onDismiss: () {
-        videoPageController.cancelQueryRoads();
-      },
+      barrierDismissible: isDesktop(),
+      onDismiss: cancelToken.cancel,
     );
-    bool flag = false;
-    for (Plugin plugin in pluginsController.pluginList) {
-      if (plugin.name == widget.historyItem.adapterName) {
-        videoPageController.currentPlugin = plugin;
-        flag = true;
-        break;
-      }
-    }
-    if (!flag) {
-      KazumiDialog.dismiss();
-      KazumiDialog.showToast(message: '未找到关联番剧源');
-      return;
-    }
-    videoPageController.bangumiItem = widget.historyItem.bangumiItem;
-    videoPageController.title =
-        widget.historyItem.bangumiItem.nameCn == ''
-            ? widget.historyItem.bangumiItem.name
-            : widget.historyItem.bangumiItem.nameCn;
-    videoPageController.src = widget.historyItem.lastSrc;
-    try {
-      await videoPageController.queryRoads(widget.historyItem.lastSrc,
-          videoPageController.currentPlugin.name);
-      KazumiDialog.dismiss();
-      Modular.to.pushNamed('/video/');
-    } catch (_) {
-      KazumiLogger().w("QueryManager: failed to query roads");
-      KazumiDialog.dismiss();
+    final result = await _playbackService.open(
+      widget.historyItem,
+      cancelToken: cancelToken,
+    );
+    KazumiDialog.dismiss();
+    if (!mounted) return;
+    switch (result) {
+      case HistoryPlaybackReady(:final args):
+        context.pushNamed('/video/', arguments: args);
+      case HistoryPlaybackUnavailable(:final reason):
+        KazumiDialog.showToast(message: reason);
     }
   }
 
@@ -88,10 +83,10 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
     final String title = widget.historyItem.bangumiItem.nameCn == ''
         ? widget.historyItem.bangumiItem.name
         : widget.historyItem.bangumiItem.nameCn;
-    final String episodeText =
-        widget.historyItem.lastWatchEpisodeName.isEmpty
-            ? '第${widget.historyItem.lastWatchEpisode}话'
-            : widget.historyItem.lastWatchEpisodeName;
+    final String episodeText = widget.historyItem.lastWatchEpisodeName.isEmpty
+        ? '第${widget.historyItem.lastWatchEpisode}话'
+        : widget.historyItem.lastWatchEpisodeName;
+    final String sourceText = _historySourceText(widget.historyItem.entryKind);
 
     return Dismissible(
       key: ValueKey(widget.historyItem.key),
@@ -183,7 +178,7 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
                             const SizedBox(width: 4),
                             Flexible(
                               child: Text(
-                                widget.historyItem.adapterName,
+                                '$sourceText · ${widget.historyItem.adapterName}',
                                 style: theme.textTheme.bodySmall?.copyWith(
                                   color: colorScheme.onSurfaceVariant,
                                 ),
@@ -203,8 +198,9 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
                             ),
                             const SizedBox(width: 4),
                             Text(
-                              Utils.formatTimestampToRelativeTime(
-                                  widget.historyItem.lastWatchTime.millisecondsSinceEpoch ~/ 1000),
+                              formatTimestampToRelativeTime(widget.historyItem
+                                      .lastWatchTime.millisecondsSinceEpoch ~/
+                                  1000),
                               style: theme.textTheme.labelSmall?.copyWith(
                                 color: colorScheme.outline,
                               ),
@@ -239,7 +235,7 @@ class _BangumiHistoryCardVState extends State<BangumiHistoryCardV> {
                         ),
                         tooltip: '番剧详情',
                         onPressed: () {
-                          Modular.to.pushNamed(
+                          context.pushNamed(
                             '/info/',
                             arguments: widget.historyItem.bangumiItem,
                           );

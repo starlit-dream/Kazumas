@@ -1,6 +1,6 @@
 import 'package:hive_ce/hive.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/storage/storage.dart';
 
 /// 看完整部番剧后弹「评分+短评」sheet 的触发判定。
 ///

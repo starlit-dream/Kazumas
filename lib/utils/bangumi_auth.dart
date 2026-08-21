@@ -8,7 +8,7 @@ import 'package:kazumi/request/api.dart';
 import 'package:kazumi/request/bangumi.dart';
 import 'package:kazumi/request/request.dart';
 import 'package:kazumi/utils/bangumi_oauth.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/utils/utils.dart';
 
 class BangumiAuth {

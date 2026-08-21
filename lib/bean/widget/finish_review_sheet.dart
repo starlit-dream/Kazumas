@@ -7,7 +7,7 @@ import 'package:kazumi/modules/bangumi/bangumi_auth_models.dart';
 import 'package:kazumi/request/bangumi.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:kazumi/utils/finish_review_trigger.dart';
-import 'package:kazumi/utils/logger.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/utils/constants.dart';
 
 /// 弹出「评分 + 短评」底部 sheet，提交后直接 PATCH 到 Bangumi。

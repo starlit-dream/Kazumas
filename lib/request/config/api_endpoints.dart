@@ -1,6 +1,8 @@
+import 'package:flutter/services.dart' show appBuildName;
+
 class ApiEndpoints {
   /// 当前版本
-  static const String version = '2.1.1';
+  static const String version = appBuildName ?? '0.0.0';
 
   /// 当前构建号
   static const String buildNumber = '20101';
@@ -28,7 +30,7 @@ class ApiEndpoints {
       buildCommit.length > 7 ? buildCommit.substring(0, 7) : buildCommit;
 
   /// 规则API级别
-  static const int apiLevel = 6;
+  static const int apiLevel = 8;
 
   /// 项目主页
   static const String projectUrl = "https://github.com/starlit-dream/Kazumas";
@@ -43,12 +45,20 @@ class ApiEndpoints {
   static const String pluginShop =
       'https://raw.githubusercontent.com/Predidit/KazumiRules/main/';
 
+  /// 规则仓库镜像
+  static const String pluginShopMirror =
+      'https://raw.gitcode.com/gh_mirrors/ka/KazumiRules/raw/main/';
+
   /// 在线升级
   static const String latestApp =
       'https://api.github.com/repos/starlit-dream/Kazumas/releases/latest';
 
-  /// Github镜像
-  static const String gitMirror = 'https://ghfast.top/';
+  /// Bangumi 镜像测试后端
+  static const String bangumiMirrorDomain = 'https://api.kazumi.fyi';
+
+  /// Kazumi 镜像后端应用更新
+  static const String latestAppMirror =
+      '$bangumiMirrorDomain/kazumi/v1/app/latest';
 
   /// 弹弹官网
   static const String dandanIndex = 'https://www.dandanplay.com/';
@@ -56,7 +66,7 @@ class ApiEndpoints {
   /// Bangumi 官网
   static const String bangumiIndex = 'https://bangumi.tv/';
 
-  /// bangumi API Domain
+  /// bangumi API
   static const String bangumiAPIDomain = 'https://api.bgm.tv';
   static const String bangumiMyself = '/v0/me';
   static const String bangumiMyCollection = '/v0/users/-/collections/{0}';
@@ -66,8 +76,17 @@ class ApiEndpoints {
       '/v0/users/-/collections/-/episodes/{0}';
   static const String bangumiUserCollections = '/v0/users/{0}/collections';
 
+  /// Bangumi 鉴权 API
+  static const String bangumiAuthAPIMirrorDomain = 'https://api.bgmapi.com';
+
+  /// Telegram 群组
+  static const String telegramGroup = 'https://t.me/kazumi_app';
+
   /// 番剧信息
   static const String bangumiInfoByID = '/v0/subjects/{0}';
+
+  /// 条目关联信息
+  static const String bangumiRelationsByID = '/v0/subjects/{0}/subjects';
 
   /// 条目搜索
   static const String bangumiRankSearch =
@@ -75,6 +94,9 @@ class ApiEndpoints {
 
   /// 从条目ID获取角色信息
   static const String bangumiCharacterByID = '/v0/subjects/{0}/characters';
+
+  /// 从条目ID获取工作人员信息
+  static const String bangumiStaffByID = '/v0/subjects/{0}/persons';
 
   /// 从条目ID获取剧集ID
   static const String bangumiEpisodeByID = '/v0/episodes';
@@ -100,6 +122,14 @@ class ApiEndpoints {
   /// 番剧趋势
   static const String bangumiTrendsNext = '/p1/trending/subjects';
 
+  /// Kazumi Bangumi 镜像缓存榜单
+  static const String bangumiMirrorPopularSubjects =
+      '/kazumi/v1/popular/subjects';
+
+  /// Kazumi Bangumi 镜像季节时间表
+  static const String bangumiMirrorSeasonCalendar =
+      '/kazumi/v1/calendar/season';
+
   /// 番剧信息
   static const String bangumiInfoByIDNext = '/p1/subjects/{0}';
 
@@ -118,9 +148,6 @@ class ApiEndpoints {
   /// 番剧角色评论
   static const String bangumiCharacterCommentsByIDNext =
       '/p1/characters/{0}/comments';
-
-  /// 番剧工作人员信息
-  static const String bangumiStaffByIDNext = '/p1/subjects/{0}/staffs/persons';
 
   /// DanDanPlay API Domain
   static const String dandanAPIDomain = 'https://api.dandanplay.net';

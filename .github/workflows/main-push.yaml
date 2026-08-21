@@ -1,6 +1,6 @@
 name: "Main Push - Pre-Release Build"
 
-on:
+"on":
   push:
     branches:
       - main
@@ -29,9 +29,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # 中心化解析最新上游版本，供各平台构建 job 注入 UPSTREAM_VERSION
+  resolve-versions:
+    name: "Resolve versions"
+    runs-on: "ubuntu-latest"
+    outputs:
+      upstream_version: ${{ steps.resolve.outputs.upstream_version }}
+    steps:
+      - name: Resolve upstream version
+        id: resolve
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          UPSTREAM_TAG=$(gh api repos/Predidit/Kazumi/releases/latest --jq '.tag_name' 2>/dev/null || echo "unknown")
+          echo "Detected upstream version: $UPSTREAM_TAG"
+          echo "upstream_version=$UPSTREAM_TAG" >> $GITHUB_OUTPUT
+        shell: bash
+
   flutter-build-android:
     name: "Pre-Release for Android"
     runs-on: "ubuntu-latest"
+    needs: [resolve-versions]
     permissions: write-all
     steps:
       - name: Clone repository
@@ -70,7 +88,7 @@ jobs:
           sed -i "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
           sed -i "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build Flutter for Android
-        run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
+        run: flutter build apk --split-per-abi --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
       - name: Sign APKs (apksigner with ZIP repair fallback)
         env:
@@ -130,6 +148,7 @@ jobs:
 
   flutter-build-windows:
     name: "Pre-Release for Windows"
+    needs: [resolve-versions]
     runs-on: "windows-latest"
     permissions: write-all
     steps:
@@ -161,7 +180,7 @@ jobs:
           (Get-Content -Path 'lib/utils/mortis.dart') -replace "rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax", "$env:DANDANAPI_KEY" | Set-Content -Path 'lib/utils/mortis.dart'
           (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_id_placeholder", "$env:BANGUMI_APP_ID" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
           (Get-Content -Path 'lib/utils/bangumi_oauth.dart') -replace "bangumi_app_secret_placeholder", "$env:BANGUMI_APP_SECRET" | Set-Content -Path 'lib/utils/bangumi_oauth.dart'
-      - run: flutter build windows --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - run: flutter build windows --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
       - run: Compress-Archive build/windows/x64/runner/Release/* Kazumas_windows_canary_${{ github.sha }}.zip
       - name: Upload windows outputs
         uses: actions/upload-artifact@v4
@@ -172,6 +191,7 @@ jobs:
 
   flutter-build-ios:
     name: "Pre-Release for iOS"
+    needs: [resolve-versions]
     runs-on: "macos-latest"
     permissions: write-all
     steps:
@@ -199,7 +219,7 @@ jobs:
         run: |
           flutter build ios --release --no-codesign \
             --dart-define=BRANCH_VERSION=canary \
-            --dart-define=UPSTREAM_VERSION=2.0.9 \
+            --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} \
             --dart-define=BUILD_COMMIT=${{ github.sha }}
       - name: Create IPA
         run: |
@@ -215,6 +235,7 @@ jobs:
 
   flutter-build-macos:
     name: "Pre-Release for macOS"
+    needs: [resolve-versions]
     runs-on: "macos-latest"
     permissions: write-all
     steps:
@@ -238,7 +259,7 @@ jobs:
           sed -i '' "s|rABUaBLqdz7aCSi3fe88ZDj2gwga9Vax|${DANDANAPI_KEY}|g" lib/utils/mortis.dart
           sed -i '' "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
           sed -i '' "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
-      - run: flutter build macos --release --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
+      - run: flutter build macos --release --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
       - name: Create DMG
         continue-on-error: true
         run: |
@@ -270,6 +291,7 @@ jobs:
 
   flutter-build-linux:
     name: "Pre-Release for Linux"
+    needs: [resolve-versions]
     runs-on: "ubuntu-latest"
     permissions: write-all
     steps:
@@ -314,7 +336,7 @@ jobs:
           sed -i "s|bangumi_app_id_placeholder|${BANGUMI_APP_ID}|g" lib/utils/bangumi_oauth.dart
           sed -i "s|bangumi_app_secret_placeholder|${BANGUMI_APP_SECRET}|g" lib/utils/bangumi_oauth.dart
       - name: Build Flutter for Linux
-        run: flutter build linux --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=2.0.9 --dart-define=BUILD_COMMIT=${{ github.sha }}
+        run: flutter build linux --dart-define=BRANCH_VERSION=canary --dart-define=UPSTREAM_VERSION=${{ needs.resolve-versions.outputs.upstream_version }} --dart-define=BUILD_COMMIT=${{ github.sha }}
         shell: bash
       - name: Package linux build output
         run: |

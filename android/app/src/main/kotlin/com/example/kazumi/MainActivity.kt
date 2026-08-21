@@ -5,7 +5,12 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.content.BroadcastReceiver
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.app.RemoteAction
+import android.graphics.Color
+import android.graphics.Rect
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.os.Build
 import android.os.Bundle
 import android.os.StatFs
@@ -13,9 +18,14 @@ import android.net.Uri
 import android.app.PictureInPictureParams
 import android.graphics.drawable.Icon
 import android.util.Rational
+import android.view.View
 import androidx.annotation.NonNull
 import androidx.core.content.ContextCompat
+import androidx.core.view.WindowCompat
+import androidx.core.view.WindowInsetsCompat
+import androidx.core.view.WindowInsetsControllerCompat
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import com.ryanheise.audioservice.AudioServiceActivity
 import com.starlitdream.kazumas.R
@@ -34,10 +44,18 @@ class MainActivity: AudioServiceActivity() {
     private var pipInPlayerPage = false
     private var pipAspectWidth = 16
     private var pipAspectHeight = 9
+    private var pipSourceRect: Rect? = null
+    private var inPipMode = false
+    private var androidFullscreen = false
+    private var originalWindowBackground: Drawable? = null
+    private var windowBackgroundOverridden = false
 
     private val actionPipPlayPause = "com.starlitdream.kazumas.pip.PLAY_PAUSE"
     private val actionPipForward = "com.starlitdream.kazumas.pip.FORWARD"
     private val actionPipToggleDanmaku = "com.starlitdream.kazumas.pip.TOGGLE_DANMAKU"
+
+    // Ratios outside [1:2.39, 2.39:1] make enterPictureInPictureMode throw.
+    private val maxPipAspectRatio = 2.39f
 
     private val pipActionReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: android.content.Context?, intent: Intent?) {
@@ -60,6 +78,24 @@ class MainActivity: AudioServiceActivity() {
         super.onDestroy()
     }
 
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus && androidFullscreen) {
+            applySystemBarsState()
+        }
+    }
+
+    override fun onConfigurationChanged(newConfig: Configuration) {
+        super.onConfigurationChanged(newConfig)
+        syncPictureInPictureMode()
+    }
+
+    @Suppress("DEPRECATION")
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode)
+        syncPictureInPictureMode()
+    }
+
     override fun configureFlutterEngine(@NonNull flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         intentChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL)
@@ -79,6 +115,12 @@ class MainActivity: AudioServiceActivity() {
             } else if (call.method == "getAndroidSdkVersion") {
                 val sdkVersion = getAndroidSdkVersion()
                 result.success(sdkVersion)
+            } else if (call.method == "enterFullscreen") {
+                enterAndroidFullscreen()
+                result.success(null)
+            } else if (call.method == "exitFullscreen") {
+                exitAndroidFullscreen()
+                result.success(null)
             } else {
                 result.notImplemented()
             }
@@ -108,6 +150,7 @@ class MainActivity: AudioServiceActivity() {
                 val danmakuEnabled = call.argument<Boolean>("danmakuEnabled") ?: false
                 pipAspectWidth = call.argument<Int>("width") ?: pipAspectWidth
                 pipAspectHeight = call.argument<Int>("height") ?: pipAspectHeight
+                updatePipSourceRect(call)
                 updatePictureInPictureActions(playing, danmakuEnabled)
                 result.success(true)
             } else if (call.method == "setAndroidAutoEnterPIPEnabled") {
@@ -116,6 +159,10 @@ class MainActivity: AudioServiceActivity() {
                 result.success(true)
             } else if (call.method == "setAndroidPIPInPlayerPage") {
                 pipInPlayerPage = call.argument<Boolean>("inPlayerPage") ?: false
+                if (!pipInPlayerPage) {
+                    pipSourceRect = null
+                }
+                refreshWindowBackground()
                 refreshPictureInPictureParamsIfNeeded()
                 result.success(true)
             } else {
@@ -143,6 +190,65 @@ class MainActivity: AudioServiceActivity() {
         return Build.VERSION.SDK_INT
     }
 
+    private fun enterAndroidFullscreen() {
+        androidFullscreen = true
+        applySystemBarsState()
+    }
+
+    private fun exitAndroidFullscreen() {
+        androidFullscreen = false
+        applySystemBarsState()
+    }
+
+    // System bars belong to the full size window; replayed on leaving PiP.
+    private fun applySystemBarsState() {
+        if (inPipMode) {
+            return
+        }
+        WindowCompat.setDecorFitsSystemWindows(window, false)
+        val controller = WindowCompat.getInsetsController(window, window.decorView)
+        if (androidFullscreen) {
+            controller.systemBarsBehavior =
+                WindowInsetsControllerCompat.BEHAVIOR_SHOW_TRANSIENT_BARS_BY_SWIPE
+            controller.hide(WindowInsetsCompat.Type.systemBars())
+        } else {
+            controller.show(WindowInsetsCompat.Type.systemBars())
+        }
+    }
+
+    // Single entry point: the mode callback and the configuration change both
+    // route here, whichever the OEM delivers first.
+    private fun syncPictureInPictureMode() {
+        val current = isInPictureInPictureMode
+        if (current == inPipMode) {
+            return
+        }
+        inPipMode = current
+        pipChannel?.invokeMethod("onModeChanged", mapOf("isInPipMode" to current))
+        refreshWindowBackground()
+        if (!current) {
+            applySystemBarsState()
+        }
+    }
+
+    // The window background shows through the Flutter surface while a resized
+    // surface has no frame yet, so the light theme would paint the picture in
+    // picture transition white.
+    private fun refreshWindowBackground() {
+        val blackBackground = inPipMode || pipInPlayerPage
+        if (blackBackground == windowBackgroundOverridden) {
+            return
+        }
+        if (blackBackground) {
+            originalWindowBackground = window.decorView.background
+            window.setBackgroundDrawable(ColorDrawable(Color.BLACK))
+        } else {
+            window.setBackgroundDrawable(originalWindowBackground)
+            originalWindowBackground = null
+        }
+        windowBackgroundOverridden = blackBackground
+    }
+
     private fun isPictureInPictureSupported(): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
             return false
@@ -157,7 +263,11 @@ class MainActivity: AudioServiceActivity() {
         if (isInPictureInPictureMode) {
             return true
         }
-        return enterPictureInPictureMode(buildPictureInPictureParams())
+        return try {
+            enterPictureInPictureMode(buildPictureInPictureParams())
+        } catch (e: Exception) {
+            false
+        }
     }
 
     private fun updatePictureInPictureActions(
@@ -172,13 +282,58 @@ class MainActivity: AudioServiceActivity() {
         refreshPictureInPictureParamsIfNeeded()
     }
 
+    // In picture in picture the rect would describe the small window, so the
+    // pre-PiP one is kept as the expand back target.
+    private fun updatePipSourceRect(call: MethodCall) {
+        if (inPipMode) {
+            return
+        }
+        val left = call.argument<Int>("sourceLeft") ?: return
+        val top = call.argument<Int>("sourceTop") ?: return
+        val right = call.argument<Int>("sourceRight") ?: return
+        val bottom = call.argument<Int>("sourceBottom") ?: return
+        if (right <= left || bottom <= top) {
+            return
+        }
+        pipSourceRect = Rect(left, top, right, bottom)
+    }
+
+    private fun buildPipSourceRectHint(): Rect? {
+        val rect = pipSourceRect ?: return null
+        val contentView = window.decorView.findViewById<View>(android.R.id.content) ?: return null
+        val contentBounds = Rect()
+        if (!contentView.getGlobalVisibleRect(contentBounds)) {
+            return null
+        }
+        val hint = Rect(rect)
+        hint.offset(contentBounds.left, contentBounds.top)
+        if (!hint.intersect(contentBounds) || hint.isEmpty) {
+            return null
+        }
+        return hint
+    }
+
+    private fun buildPipAspectRatio(): Rational {
+        val width = if (pipAspectWidth > 0) pipAspectWidth else 16
+        val height = if (pipAspectHeight > 0) pipAspectHeight else 9
+        val ratio = width.toFloat() / height.toFloat()
+        return when {
+            ratio > maxPipAspectRatio -> Rational(239, 100)
+            ratio < 1f / maxPipAspectRatio -> Rational(100, 239)
+            else -> Rational(width, height)
+        }
+    }
+
     private fun buildPictureInPictureParams(): PictureInPictureParams {
         val actions = buildPipActions()
         val builder = PictureInPictureParams.Builder()
-            .setAspectRatio(Rational(pipAspectWidth, pipAspectHeight))
+            .setAspectRatio(buildPipAspectRatio())
+        buildPipSourceRectHint()?.let { builder.setSourceRectHint(it) }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setAutoEnterEnabled(autoEnterPipOnHomeGesture && pipInPlayerPage)
-            builder.setSeamlessResizeEnabled(false)
+            // The crossfade alternative is driven by a window snapshot, which
+            // holds no video surface and fades through an empty window.
+            builder.setSeamlessResizeEnabled(true)
         }
         if (actions.isNotEmpty()) {
             builder.setActions(actions)
@@ -191,7 +346,11 @@ class MainActivity: AudioServiceActivity() {
             return
         }
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            setPictureInPictureParams(buildPictureInPictureParams())
+            try {
+                setPictureInPictureParams(buildPictureInPictureParams())
+            } catch (e: Exception) {
+                // The activity can reject params while it is not resumed.
+            }
         }
     }
 
