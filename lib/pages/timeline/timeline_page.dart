@@ -1,21 +1,25 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
-import 'package:flutter_modular/flutter_modular.dart';
-import 'package:kazumi/pages/menu/menu.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/pages/timeline/timeline_controller.dart';
+import 'package:kazumi/bean/dialog/adaptive_bottom_sheet.dart';
+import 'package:kazumi/bean/dialog/material_bottom_sheet.dart';
 import 'package:kazumi/bean/card/bangumi_timeline_card.dart';
-import 'package:kazumi/utils/utils.dart';
 import 'package:kazumi/utils/constants.dart';
-import 'package:kazumi/utils/storage.dart';
-import 'package:provider/provider.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
 import 'package:kazumi/utils/anime_season.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
-import 'package:kazumi/bean/widget/error_widget.dart';
+import 'package:kazumi/bean/widget/bangumi_mirror_error_widget.dart';
+import 'package:kazumi/utils/device.dart';
 
 class TimelinePage extends StatefulWidget {
-  const TimelinePage({super.key});
+  const TimelinePage({
+    super.key,
+    required this.controller,
+  });
+
+  final TimelineController controller;
 
   @override
   State<TimelinePage> createState() => _TimelinePageState();
@@ -23,9 +27,7 @@ class TimelinePage extends StatefulWidget {
 
 class _TimelinePageState extends State<TimelinePage>
     with SingleTickerProviderStateMixin {
-  final TimelineController timelineController =
-      Modular.get<TimelineController>();
-  late NavigationBarState navigationBarState;
+  TimelineController get timelineController => widget.controller;
   TabController? tabController;
   late bool showRating;
   final GlobalKey filterSectionKey = GlobalKey();
@@ -36,10 +38,7 @@ class _TimelinePageState extends State<TimelinePage>
     int weekday = DateTime.now().weekday - 1;
     tabController =
         TabController(vsync: this, length: tabs.length, initialIndex: weekday);
-    navigationBarState =
-        Provider.of<NavigationBarState>(context, listen: false);
-    showRating =
-        GStorage.setting.get(SettingBoxKey.showRating, defaultValue: true);
+    showRating = GStorage.getSetting(SettingsKeys.showRating);
     if (timelineController.bangumiCalendar.isEmpty) {
       timelineController.init();
     }
@@ -49,15 +48,6 @@ class _TimelinePageState extends State<TimelinePage>
   void dispose() {
     tabController?.dispose();
     super.dispose();
-  }
-
-  void onBackPressed(BuildContext context) {
-    if (KazumiDialog.observer.hasKazumiDialog) {
-      KazumiDialog.dismiss();
-      return;
-    }
-    navigationBarState.updateSelectedIndex(0);
-    Modular.to.navigate('/tab/popular/');
   }
 
   DateTime generateDateTime(int year, String season) {
@@ -88,7 +78,7 @@ class _TimelinePageState extends State<TimelinePage>
   final seasons = ['秋', '夏', '春', '冬'];
 
   String getStringByDateTime(DateTime d) {
-    return d.year.toString() + Utils.getSeasonStringByMonth(d.month);
+    return d.year.toString() + getSeasonStringByMonth(d.month);
   }
 
   Future<void> scrollToFilterSection() async {
@@ -110,9 +100,7 @@ class _TimelinePageState extends State<TimelinePage>
     double? compactHeightFactor,
   }) {
     final mediaSize = MediaQuery.sizeOf(context);
-    final maxWidth = mediaSize.width >= LayoutBreakpoint.medium['width']!
-        ? mediaSize.width * 9 / 16
-        : mediaSize.width;
+    final adaptiveConstraints = adaptiveBottomSheetConstraints(context);
     final maxHeight = compactHeightFactor != null
         ? (mediaSize.height >= LayoutBreakpoint.compact['height']!
             ? mediaSize.height * compactHeightFactor
@@ -120,66 +108,8 @@ class _TimelinePageState extends State<TimelinePage>
         : double.infinity;
 
     return BoxConstraints(
-      maxWidth: maxWidth,
+      maxWidth: adaptiveConstraints.maxWidth,
       maxHeight: maxHeight,
-    );
-  }
-
-  Widget buildTimelineBottomSheetHeaderCard(
-    BuildContext context, {
-    required String title,
-    required String description,
-    required Widget footer,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 16, 18),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(24),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: textTheme.headlineSmall?.copyWith(
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      description,
-                      style: textTheme.bodyMedium?.copyWith(
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 12),
-              IconButton.filledTonal(
-                onPressed: KazumiDialog.dismiss,
-                tooltip: '关闭',
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-          const SizedBox(height: 16),
-          footer,
-        ],
-      ),
     );
   }
 
@@ -187,7 +117,6 @@ class _TimelinePageState extends State<TimelinePage>
     BuildContext context, {
     required Widget header,
     required Widget body,
-    bool showDragHandle = false,
   }) {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -199,26 +128,7 @@ class _TimelinePageState extends State<TimelinePage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          if (showDragHandle) ...[
-            const SizedBox(height: 12),
-            Container(
-              width: 32,
-              height: 4,
-              decoration: BoxDecoration(
-                color: colorScheme.onSurfaceVariant.withValues(alpha: 0.4),
-                borderRadius: BorderRadius.circular(999),
-              ),
-            ),
-          ],
-          Padding(
-            padding: EdgeInsets.fromLTRB(
-              16,
-              showDragHandle ? 12 : 16,
-              16,
-              8,
-            ),
-            child: header,
-          ),
+          header,
           Flexible(child: body),
         ],
       ),
@@ -291,10 +201,10 @@ class _TimelinePageState extends State<TimelinePage>
     final colorScheme = Theme.of(context).colorScheme;
     final textTheme = Theme.of(context).textTheme;
 
-    return buildTimelineBottomSheetHeaderCard(
-      context,
+    return MaterialBottomSheetHeader(
       title: '时间机器',
       description: '按季度回到任意放送季，时间线会立即切换。',
+      onClose: KazumiDialog.dismiss,
       footer: Container(
         padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
         decoration: BoxDecoration(
@@ -314,7 +224,7 @@ class _TimelinePageState extends State<TimelinePage>
 
   DateTime? getSelectedSeason(List<DateTime> availableSeasons) {
     for (final season in availableSeasons) {
-      if (Utils.isSameSeason(timelineController.selectedDate, season)) {
+      if (isSameSeason(timelineController.selectedDate, season)) {
         return season;
       }
     }
@@ -377,9 +287,9 @@ class _TimelinePageState extends State<TimelinePage>
       spacing: 12,
       runSpacing: 12,
       children: availableSeasons.map((date) {
-        final seasonName = Utils.getSeasonStringByMonth(date.month);
+        final seasonName = getSeasonStringByMonth(date.month);
         final isSelected =
-            selectedSeason != null && Utils.isSameSeason(selectedSeason, date);
+            selectedSeason != null && isSameSeason(selectedSeason, date);
 
         return ChoiceChip(
           label: Text(seasonName),
@@ -420,7 +330,7 @@ class _TimelinePageState extends State<TimelinePage>
     final currDate = DateTime.now();
     timelineController.tryEnterSeason(date);
 
-    if (Utils.isSameSeason(timelineController.selectedDate, currDate)) {
+    if (isSameSeason(timelineController.selectedDate, currDate)) {
       await timelineController.getSchedules();
     } else {
       await timelineController.getSchedulesBySeason();
@@ -508,10 +418,10 @@ class _TimelinePageState extends State<TimelinePage>
   }
 
   Widget buildTimelineOptionsSheetHeader(BuildContext context) {
-    return buildTimelineBottomSheetHeaderCard(
-      context,
+    return MaterialBottomSheetHeader(
       title: '时间线选项',
       description: '调整排序和过滤条件，结果会立即应用到当前时间线。',
+      onClose: KazumiDialog.dismiss,
       footer: Observer(
         builder: (context) {
           final enabledFilterCount = getEnabledTimelineFilterCount();
@@ -534,51 +444,6 @@ class _TimelinePageState extends State<TimelinePage>
             ],
           );
         },
-      ),
-    );
-  }
-
-  Widget buildTimelineOptionSection(
-    BuildContext context, {
-    required String title,
-    required String description,
-    required Widget child,
-    Key? sectionKey,
-  }) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final textTheme = Theme.of(context).textTheme;
-
-    return Container(
-      key: sectionKey,
-      width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 18, 20, 20),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(
-          color: colorScheme.outlineVariant.withValues(alpha: 0.5),
-        ),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: textTheme.titleMedium?.copyWith(
-              color: colorScheme.onSurface,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            description,
-            style: textTheme.bodyMedium?.copyWith(
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
-          const SizedBox(height: 16),
-          child,
-        ],
       ),
     );
   }
@@ -709,9 +574,8 @@ class _TimelinePageState extends State<TimelinePage>
   }
 
   Widget showFilterSwitcher() {
-    return buildTimelineOptionSection(
-      context,
-      sectionKey: filterSectionKey,
+    return MaterialBottomSheetSection(
+      key: filterSectionKey,
       title: '过滤器',
       description: '按收藏状态收起不需要显示的条目，支持连续调整。',
       child: Column(
@@ -760,8 +624,7 @@ class _TimelinePageState extends State<TimelinePage>
   }
 
   Widget showSortSwitcher() {
-    return buildTimelineOptionSection(
-      context,
+    return MaterialBottomSheetSection(
       title: '排序方式',
       description: '选择每一天内番剧卡片的排列方式。',
       child: Column(
@@ -812,83 +675,76 @@ class _TimelinePageState extends State<TimelinePage>
 
   @override
   Widget build(BuildContext context) {
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? result) {
-        if (didPop) {
-          return;
-        }
-        onBackPressed(context);
-      },
-      child: Scaffold(
-        appBar: SysAppBar(
-          needTopOffset: false,
-          toolbarHeight: 104,
-          bottom: TabBar(
-            controller: tabController,
-            tabs: tabs,
-            indicatorColor: Theme.of(context).colorScheme.primary,
-          ),
-          title: InkWell(
-            borderRadius: BorderRadius.circular(8),
-            child: Observer(builder: (context) {
-              return Text(timelineController.seasonString);
-            }),
-            onTap: () {
-              showSeasonBottomSheet(context);
-            },
-          ),
+    return Scaffold(
+      appBar: SysAppBar(
+        needTopOffset: false,
+        toolbarHeight: 104,
+        bottom: TabBar(
+          controller: tabController,
+          tabs: tabs,
+          indicatorColor: Theme.of(context).colorScheme.primary,
         ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () async {
-            KazumiDialog.showBottomSheet(
-              backgroundColor: Theme.of(context).colorScheme.surface,
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-              ),
-              isScrollControlled: true,
-              constraints: buildTimelineBottomSheetConstraints(
-                context,
-                compactHeightFactor: 2 / 3,
-              ),
-              clipBehavior: Clip.antiAlias,
-              useSafeArea: true,
-              context: context,
-              builder: (context) {
-                return buildTimelineOptionsSheet(context);
-              },
-            );
+        title: InkWell(
+          borderRadius: BorderRadius.circular(8),
+          child: Observer(builder: (context) {
+            return Text(timelineController.seasonString);
+          }),
+          onTap: () {
+            showSeasonBottomSheet(context);
           },
-          child: const Icon(Icons.tune),
         ),
-        body: Observer(builder: (context) {
-          if (timelineController.isLoading &&
-              timelineController.bangumiCalendar.isEmpty) {
-            return const Center(
-              child: CircularProgressIndicator(),
-            );
-          }
-          if (timelineController.isTimeOut) {
-            return Center(
-              child: SizedBox(
-                height: 400,
-                child: GeneralErrorWidget(errMsg: '什么都没有找到 (´;ω;`)', actions: [
-                  GeneralErrorButton(
-                    onPressed: () {
-                      onSeasonSelected(timelineController.selectedDate);
-                    },
-                    text: '点击重试',
-                  ),
-                ]),
-              ),
-            );
-          }
-          return TabBarView(
-            controller: tabController,
-            children: contentGrid(timelineController.bangumiCalendar),
-          );
-        }),
       ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () {
+          KazumiDialog.showBottomSheet(
+            backgroundColor: Theme.of(context).colorScheme.surface,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+            ),
+            isScrollControlled: true,
+            constraints: buildTimelineBottomSheetConstraints(
+              context,
+              compactHeightFactor: 2 / 3,
+            ),
+            clipBehavior: Clip.antiAlias,
+            useSafeArea: true,
+            context: context,
+            builder: (context) {
+              return buildTimelineOptionsSheet(context);
+            },
+          );
+        },
+        child: const Icon(Icons.tune),
+      ),
+      body: Observer(builder: (context) {
+        if (timelineController.isLoading &&
+            timelineController.bangumiCalendar.isEmpty) {
+          return const Center(
+            child: CircularProgressIndicator(),
+          );
+        }
+        if (timelineController.isTimeOut) {
+          return Center(
+            child: SizedBox(
+              height: 400,
+              child: BangumiMirrorErrorWidget(
+                onRetry: () {
+                  onSeasonSelected(timelineController.selectedDate);
+                },
+                onSettingsReturned: () {
+                  if (mounted) {
+                    setState(() {});
+                  }
+                },
+              ),
+            ),
+          );
+        }
+        return TabBarView(
+          controller: tabController,
+          children: contentGrid(timelineController.bangumiCalendar),
+        );
+      }),
     );
   }
 
@@ -901,8 +757,7 @@ class _TimelinePageState extends State<TimelinePage>
     if (MediaQuery.sizeOf(context).width > LayoutBreakpoint.medium['width']!) {
       crossCount = 3;
     }
-    double cardHeight =
-        Utils.isDesktop() ? 160 : (Utils.isTablet() ? 140 : 120);
+    double cardHeight = isDesktop() ? 160 : (isTablet() ? 140 : 120);
     for (var bangumiList in bangumiCalendar) {
       // 根据过滤器设置过滤番剧
       var filteredList = bangumiList;

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:hive_ce/hive.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
-import 'package:kazumi/utils/storage.dart';
-import 'package:card_settings_ui/card_settings_ui.dart';
+import 'package:kazumi/pages/player/controller/player_super_resolution.dart';
+import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/bean/settings/settings_list.dart';
 
 class SuperResolutionSettings extends StatefulWidget {
   const SuperResolutionSettings({super.key});
@@ -13,92 +13,64 @@ class SuperResolutionSettings extends StatefulWidget {
 }
 
 class _SuperResolutionSettingsState extends State<SuperResolutionSettings> {
-  late final Box setting = GStorage.setting;
-  late bool promptOnEnable;
-  late final ValueNotifier<String> superResolutionType = ValueNotifier<String>(
-    setting
-        .get(SettingBoxKey.defaultSuperResolutionType, defaultValue: 1)
-        .toString(),
-  );
+  late bool disableWarning;
+  late SuperResolutionMode superResolutionMode;
 
   @override
   void initState() {
     super.initState();
-    promptOnEnable =
-        setting.get(SettingBoxKey.superResolutionWarn, defaultValue: false);
+    disableWarning = GStorage.getSetting<bool>(
+      SettingsKeys.disableSuperResolutionWarning,
+    );
+    superResolutionMode = SuperResolutionMode.fromStorageValue(
+      GStorage.getSetting<int>(SettingsKeys.defaultSuperResolutionMode),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final fontFamily = Theme.of(context).textTheme.bodyMedium?.fontFamily;
     return Scaffold(
       appBar: const SysAppBar(
         title: Text('超分辨率'),
       ),
       body: SettingsList(
-        maxWidth: 1000,
         sections: [
-          SettingsSection(
-              title: Text(
-                  '超分辨率需要启用硬件解码, 若启用硬件解码后仍然不生效, 尝试切换视频渲染器为 gpu', style: TextStyle(fontFamily: fontFamily)),
-              tiles: [
-                SettingsTile<String>.radioTile(
-                  title: Text("OFF", style: TextStyle(fontFamily: fontFamily)),
-                  description: Text("默认禁用超分辨率", style: TextStyle(fontFamily: fontFamily)),
-                  radioValue: "1",
-                  groupValue: superResolutionType.value,
-                  onChanged: (String? value) {
-                    if (value != null) {
-                      setting.put(SettingBoxKey.defaultSuperResolutionType,
-                          int.tryParse(value) ?? 1);
-                      setState(() {
-                        superResolutionType.value = value;
-                      });
-                    }
-                  },
+          SettingsRadioSection<SuperResolutionMode>(
+            title: Text('超分辨率需要启用硬件解码, 若启用硬件解码后仍然不生效, 尝试切换视频渲染器为 gpu'),
+            groupValue: superResolutionMode,
+            onChanged: (SuperResolutionMode? value) {
+              if (value == null) return;
+              GStorage.putSetting<int>(
+                SettingsKeys.defaultSuperResolutionMode,
+                value.storageValue,
+              );
+              setState(() {
+                superResolutionMode = value;
+              });
+            },
+            tiles: [
+              for (final mode in SuperResolutionMode.values)
+                SettingsTile<SuperResolutionMode>.radioTile(
+                  title: Text(mode.label),
+                  description: Text(mode.description),
+                  radioValue: mode,
                 ),
-                SettingsTile<String>.radioTile(
-                  title: Text("Efficiency", style: TextStyle(fontFamily: fontFamily)),
-                  description: Text("默认启用基于Anime4K的超分辨率 (效率优先)", style: TextStyle(fontFamily: fontFamily)),
-                  radioValue: "2",
-                  groupValue: superResolutionType.value,
-                  onChanged: (String? value) {
-                    if (value != null) {
-                      setting.put(SettingBoxKey.defaultSuperResolutionType,
-                          int.tryParse(value) ?? 1);
-                      setState(() {
-                        superResolutionType.value = value;
-                      });
-                    }
-                  },
-                ),
-                SettingsTile<String>.radioTile(
-                  title: Text("Quality", style: TextStyle(fontFamily: fontFamily)),
-                  description: Text("默认启用基于Anime4K的超分辨率 (质量优先)", style: TextStyle(fontFamily: fontFamily)),
-                  radioValue: "3",
-                  groupValue: superResolutionType.value,
-                  onChanged: (String? value) {
-                    if (value != null) {
-                      setting.put(SettingBoxKey.defaultSuperResolutionType,
-                          int.tryParse(value) ?? 1);
-                      setState(() {
-                        superResolutionType.value = value;
-                      });
-                    }
-                  },
-                )
-              ]),
+            ],
+          ),
           SettingsSection(
-            title: Text('默认行为', style: TextStyle(fontFamily: fontFamily)),
+            title: Text('默认行为'),
             tiles: [
               SettingsTile.switchTile(
-                title: Text('关闭提示', style: TextStyle(fontFamily: fontFamily)),
-                description: Text('关闭每次启用超分辨率时的提示', style: TextStyle(fontFamily: fontFamily)),
-                initialValue: promptOnEnable,
+                leading: Icons.notifications_off_rounded,
+                title: Text('关闭提示'),
+                description: Text('关闭每次启用超分辨率时的提示'),
+                initialValue: disableWarning,
                 onToggle: (value) async {
-                  promptOnEnable = value ?? !promptOnEnable;
-                  await setting.put(
-                      SettingBoxKey.superResolutionWarn, promptOnEnable);
+                  disableWarning = value ?? !disableWarning;
+                  await GStorage.putSetting<bool>(
+                    SettingsKeys.disableSuperResolutionWarning,
+                    disableWarning,
+                  );
                   if (mounted) setState(() {});
                 },
               ),

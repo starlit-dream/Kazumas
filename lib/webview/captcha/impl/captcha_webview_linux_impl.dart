@@ -1,17 +1,18 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:desktop_webview_window/desktop_webview_window.dart';
-import 'package:kazumi/utils/logger.dart';
-import 'package:kazumi/utils/storage.dart';
-import 'package:kazumi/utils/proxy_utils.dart';
+import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/network/proxy_utils.dart';
 import 'package:kazumi/webview/captcha/captcha_webview_controller.dart';
 
-class CaptchaWebviewLinuxImpl
-    extends CaptchaWebviewController<Webview> {
+class CaptchaWebviewLinuxImpl extends CaptchaWebviewController<Webview> {
   VoidCallback? _navigationListener;
   String _currentCaptchaImageXpath = '';
   String _buttonXpath = '';
+  String? _customScript;
 
   @override
   Future<void> init() async {
@@ -28,13 +29,10 @@ class CaptchaWebviewLinuxImpl
   }
 
   ProxyConfiguration? _getProxyConfiguration() {
-    final setting = GStorage.setting;
-    final bool proxyEnable =
-        setting.get(SettingBoxKey.proxyEnable, defaultValue: false);
+    final bool proxyEnable = GStorage.getSetting(SettingsKeys.proxyEnable);
     if (!proxyEnable) return null;
 
-    final String proxyUrl =
-        setting.get(SettingBoxKey.proxyUrl, defaultValue: '');
+    final String proxyUrl = GStorage.getSetting(SettingsKeys.proxyUrl);
     final parsed = ProxyUtils.parseProxyUrl(proxyUrl);
     if (parsed == null) return null;
 
@@ -62,8 +60,8 @@ class CaptchaWebviewLinuxImpl
           captchaDisappearedController.add(null);
         }
       } else if (msg.startsWith('captchaLog:')) {
-        logEventController.add(
-            '[Captcha WebView JS] ${msg.replaceFirst('captchaLog:', '')}');
+        logEventController
+            .add('[Captcha WebView JS] ${msg.replaceFirst('captchaLog:', '')}');
       }
     });
   }
@@ -83,6 +81,8 @@ class CaptchaWebviewLinuxImpl
         await _injectCaptchaScript();
       } else if (_buttonXpath.isNotEmpty) {
         await _injectButtonClickScript(_buttonXpath);
+      } else if (_customScript != null) {
+        await _injectCustomScript(_customScript!);
       }
     }
   }
@@ -99,7 +99,7 @@ class CaptchaWebviewLinuxImpl
           captchaDisappearedController.add(null);
         }
       }
-      // Type-2: button was clicked; page navigation confirms verification.
+      // Automated verification marked a click; page navigation confirms success.
       if (buttonWasClicked && !captchaDisappearedController.isClosed) {
         logEventController.add(
             '[Captcha WebView] Button click and page navigated, verification done');
@@ -110,9 +110,12 @@ class CaptchaWebviewLinuxImpl
   }
 
   Future<bool> _isCaptchaPresent() async {
-    if (_currentCaptchaImageXpath.isEmpty || webviewController == null) return false;
-    final escaped =
-        _currentCaptchaImageXpath.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+    if (_currentCaptchaImageXpath.isEmpty || webviewController == null) {
+      return false;
+    }
+    final escaped = _currentCaptchaImageXpath
+        .replaceAll('\\', '\\\\')
+        .replaceAll("'", "\\'");
     try {
       final result = await webviewController!.evaluateJavaScript('''
 (function() {
@@ -123,7 +126,7 @@ class CaptchaWebviewLinuxImpl
   } catch(e) { return 'absent'; }
 })();
 ''');
-      return result?.contains('present') ?? false;
+      return _decodeJsString(result) == 'present';
     } catch (e) {
       KazumiLogger().d('[Captcha WebView] _isCaptchaPresent error: $e');
       return false;
@@ -132,8 +135,9 @@ class CaptchaWebviewLinuxImpl
 
   Future<void> _injectCaptchaScript() async {
     if (_currentCaptchaImageXpath.isEmpty) return;
-    final escapedXpath =
-        _currentCaptchaImageXpath.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+    final escapedXpath = _currentCaptchaImageXpath
+        .replaceAll('\\', '\\\\')
+        .replaceAll("'", "\\'");
 
     final script = '''
 (function() {
@@ -143,11 +147,6 @@ class CaptchaWebviewLinuxImpl
   var _captchaXpath = '$escapedXpath';
   var _captchaPoller = null;
   var _disappearObserver = null;
-
-  function _resolveSrc(node) {
-    return node.getAttribute('src') || node.getAttribute('data-src') ||
-           node.src || '';
-  }
 
   function _evalXpath() {
     try {
@@ -223,9 +222,11 @@ class CaptchaWebviewLinuxImpl
   }
 
   @override
-  Future<void> loadPage(String url, String captchaXpath, {String? inputXpath}) async {
+  Future<void> loadPage(String url, String captchaXpath,
+      {String? inputXpath}) async {
     _currentCaptchaImageXpath = captchaXpath;
     _buttonXpath = '';
+    _customScript = null;
     buttonWasClicked = false;
     captchaWasFound = false;
     webviewController?.launch(url);
@@ -235,14 +236,70 @@ class CaptchaWebviewLinuxImpl
   Future<void> loadPageForButtonClick(String url, String buttonXpath) async {
     _currentCaptchaImageXpath = '';
     _buttonXpath = buttonXpath;
+    _customScript = null;
     buttonWasClicked = false;
     captchaWasFound = false;
     webviewController?.launch(url);
   }
 
+  @override
+  Future<void> loadPageForCustomScript(String url, String script) async {
+    _currentCaptchaImageXpath = '';
+    _buttonXpath = '';
+    _customScript = script;
+    buttonWasClicked = false;
+    captchaWasFound = false;
+    webviewController?.launch(url);
+  }
+
+  Future<void> _injectCustomScript(String script) async {
+    logEventController.add('[Captcha WebView] Injecting custom script');
+    final wrappedScript = '''
+(function() {
+  try {
+    window.KazumiCaptcha = {
+      log: function(message) {
+        window.webkit.messageHandlers.msgToNative.postMessage('captchaLog:' + String(message));
+      },
+      clicked: function() {
+        window.webkit.messageHandlers.msgToNative.postMessage('buttonClicked:');
+      },
+      done: function() {
+        window.webkit.messageHandlers.msgToNative.postMessage('captchaGone:');
+      },
+      fail: function(message) {
+        window.webkit.messageHandlers.msgToNative.postMessage('captchaLog:Custom script failed: ' + String(message));
+      }
+    };
+    window.KazumiCaptcha.log('CustomScript injected on ' + window.location.href);
+    if (!${script.trim().isEmpty ? 'false' : 'true'}) {
+      window.KazumiCaptcha.fail('empty captchaScript');
+      return;
+    }
+    var __kazumiResult = (function() {
+$script
+    })();
+    if (__kazumiResult === true) {
+      window.KazumiCaptcha.done();
+    }
+  } catch(e) {
+    try { window.KazumiCaptcha.fail(e && e.message ? e.message : e); } catch(e2) {}
+  }
+})();
+''';
+    try {
+      final result = await webviewController?.evaluateJavaScript(wrappedScript);
+      logEventController
+          .add('[Captcha WebView] Custom script execute result: $result');
+    } catch (e) {
+      KazumiLogger().e('[Captcha WebView] injectCustomScript error: $e');
+      logEventController
+          .add('[Captcha WebView] Custom script inject error: $e');
+    }
+  }
+
   Future<void> _injectButtonClickScript(String buttonXpath) async {
-    final escaped =
-        buttonXpath.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
+    final escaped = buttonXpath.replaceAll('\\', '\\\\').replaceAll("'", "\\'");
     final script = '''
 (function() {
   window.webkit.messageHandlers.msgToNative.postMessage(
@@ -354,12 +411,53 @@ class CaptchaWebviewLinuxImpl
       final cookies = await webviewController?.getAllCookies() ?? [];
       final cookieString =
           cookies.map((c) => '${c.name}=${c.value}').join('; ');
-      logEventController
-          .add('[Captcha WebView] Cookies: $cookieString');
+      logEventController.add('[Captcha WebView] Cookies: $cookieString');
       return cookieString;
     } catch (e) {
       KazumiLogger().e('[Captcha WebView] getCookieString error: $e');
       return '';
+    }
+  }
+
+  @override
+  Future<String> getPageHtml() async {
+    try {
+      final result = await webviewController?.evaluateJavaScript('''
+(function() {
+  try {
+    return document.readyState === 'loading' ? '' : document.documentElement.outerHTML;
+  } catch(e) { return ''; }
+})();
+''');
+      return _decodeJsString(result);
+    } catch (e) {
+      KazumiLogger().d('[Captcha WebView] getPageHtml error: $e');
+      return '';
+    }
+  }
+
+  @override
+  Future<String> getUserAgent() async {
+    try {
+      final result = await webviewController?.evaluateJavaScript(
+          '(function() { return navigator.userAgent; })();');
+      return _decodeJsString(result);
+    } catch (e) {
+      KazumiLogger().d('[Captcha WebView] getUserAgent error: $e');
+      return '';
+    }
+  }
+
+  /// WebKitGTK 通过 jsc_value_to_json 返回结果，字符串会带外围双引号且内容
+  /// 被转义，必须解码后才能当作 HTML 或 UA 使用。旧 WebKit 若返回裸字符串，
+  /// 解码失败则按原值回落。
+  String _decodeJsString(String? raw) {
+    if (raw == null || raw.isEmpty) return '';
+    try {
+      final decoded = jsonDecode(raw);
+      return decoded is String ? decoded : '';
+    } catch (_) {
+      return raw;
     }
   }
 
@@ -372,6 +470,7 @@ class CaptchaWebviewLinuxImpl
   void dispose() {
     _currentCaptchaImageXpath = '';
     _buttonXpath = '';
+    _customScript = null;
     buttonWasClicked = false;
     captchaWasFound = false;
     if (_navigationListener != null) {

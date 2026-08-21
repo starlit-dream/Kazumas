@@ -1,10 +1,7 @@
-import 'package:card_settings_ui/list/settings_list.dart';
-import 'package:card_settings_ui/section/settings_section.dart';
-import 'package:card_settings_ui/tile/settings_tile.dart';
+import 'package:kazumi/bean/settings/settings_list.dart';
 import 'package:flutter/material.dart';
-import 'package:hive_ce/hive.dart';
-import 'package:kazumi/bean/appbar/sys_app_bar.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/bean/settings/settings_detail_scaffold.dart';
+import 'package:kazumi/services/storage/storage.dart';
 
 class InterfaceSettingsPage extends StatefulWidget {
   const InterfaceSettingsPage({super.key});
@@ -14,8 +11,8 @@ class InterfaceSettingsPage extends StatefulWidget {
 }
 
 class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
-  Box setting = GStorage.setting;
   late bool showRating;
+  late bool showAnimeCounter;
   late String defaultPage;
   final MenuController defaultPageMenuController = MenuController();
 
@@ -29,13 +26,13 @@ class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
   @override
   void initState() {
     super.initState();
-    showRating = setting.get(SettingBoxKey.showRating, defaultValue: true);
-    defaultPage = setting.get(SettingBoxKey.defaultStartupPage,
-        defaultValue: '/tab/popular/');
+    showRating = GStorage.getSetting(SettingsKeys.showRating);
+    showAnimeCounter = GStorage.getSetting(SettingsKeys.showAnimeCounter);
+    defaultPage = GStorage.getSetting(SettingsKeys.defaultStartupPage);
   }
 
   void updateDefaultPage(String page) {
-    setting.put(SettingBoxKey.defaultStartupPage, page);
+    GStorage.putSetting(SettingsKeys.defaultStartupPage, page);
     setState(() {
       defaultPage = page;
     });
@@ -43,16 +40,13 @@ class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
 
   @override
   Widget build(BuildContext context) {
-    final fontFamily = Theme.of(context).textTheme.bodyMedium?.fontFamily;
-
-    return Scaffold(
-      appBar: SysAppBar(
-        title: Text('界面设置'),
-      ),
+    return SettingsDetailScaffold(
+      title: Text('界面设置'),
       body: SettingsList(
         sections: [
-          SettingsSection(tiles: [
-            SettingsTile.navigation(
+          SettingsSection(title: Text('启动'), tiles: [
+            SettingsTile(
+              leading: Icons.home_rounded,
               onPressed: (_) async {
                 if (defaultPageMenuController.isOpen) {
                   defaultPageMenuController.close();
@@ -60,16 +54,14 @@ class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
                   defaultPageMenuController.open();
                 }
               },
-              title: Text('启动界面设置', style: TextStyle(fontFamily: fontFamily)),
-              description: Text('设置应用开启时的默认页面',
-                  style: TextStyle(fontFamily: fontFamily)),
+              title: Text('启动界面设置'),
+              description: Text('设置应用开启时的默认页面'),
               value: MenuAnchor(
                 consumeOutsideTap: true,
                 controller: defaultPageMenuController,
                 builder: (_, __, ___) {
                   return Text(
                     defaultPageMap[defaultPage] ?? '推荐',
-                    style: TextStyle(fontFamily: fontFamily),
                   );
                 },
                 menuChildren: [
@@ -88,7 +80,6 @@ class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
                               color: entry.key == defaultPage
                                   ? Theme.of(context).colorScheme.primary
                                   : null,
-                              fontFamily: fontFamily,
                             ),
                           ),
                         ),
@@ -98,17 +89,29 @@ class _InterfaceSettingsPageState extends State<InterfaceSettingsPage> {
               ),
             ),
           ]),
-          SettingsSection(tiles: [
+          SettingsSection(title: Text('展示信息'), tiles: [
             SettingsTile.switchTile(
+              leading: Icons.star_rounded,
               onToggle: (value) async {
                 showRating = value ?? !showRating;
-                await setting.put(SettingBoxKey.showRating, showRating);
+                await GStorage.putSetting(SettingsKeys.showRating, showRating);
                 setState(() {});
               },
-              title: Text('显示评分', style: TextStyle(fontFamily: fontFamily)),
-              description: Text('关闭后将在概览中隐藏评分信息',
-                  style: TextStyle(fontFamily: fontFamily)),
+              title: Text('显示评分'),
+              description: Text('关闭后将在概览中隐藏评分信息'),
               initialValue: showRating,
+            ),
+            SettingsTile.switchTile(
+              leading: Icons.insights_rounded,
+              onToggle: (value) async {
+                showAnimeCounter = value ?? !showAnimeCounter;
+                await GStorage.putSetting(
+                    SettingsKeys.showAnimeCounter, showAnimeCounter);
+                setState(() {});
+              },
+              title: Text('显示追番统计'),
+              description: Text('启用后将在追番页面下方显示追番统计'),
+              initialValue: showAnimeCounter,
             ),
           ]),
         ],

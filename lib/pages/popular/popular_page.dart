@@ -1,45 +1,44 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:flutter_modular/flutter_modular.dart';
-import 'package:kazumi/bean/dialog/dialog_helper.dart';
-import 'package:kazumi/bean/widget/error_widget.dart';
+import 'package:kazumi/bean/widget/bangumi_mirror_error_widget.dart';
 import 'package:kazumi/bean/widget/custom_dropdown_menu.dart';
+import 'package:kazumi/modules/bangumi/bangumi_item.dart';
 import 'package:kazumi/pages/popular/popular_controller.dart';
 import 'package:kazumi/bean/card/bangumi_card.dart';
 import 'package:kazumi/utils/constants.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
-import 'package:flutter/services.dart';
 import 'package:window_manager/window_manager.dart';
-import 'package:kazumi/utils/utils.dart';
-import 'package:kazumi/utils/logger.dart';
-import 'package:kazumi/pages/menu/menu.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/services/storage/storage.dart';
 import 'package:kazumi/bean/appbar/drag_to_move_bar.dart' as dtb;
+import 'package:kazumi/utils/device.dart';
 
 class PopularPage extends StatefulWidget {
-  const PopularPage({super.key});
+  const PopularPage({
+    super.key,
+    required this.controller,
+  });
+
+  final PopularController controller;
 
   @override
   State<PopularPage> createState() => _PopularPageState();
 }
 
-class _PopularPageState extends State<PopularPage>
-    with AutomaticKeepAliveClientMixin {
-  DateTime? _lastPressedAt;
-  late NavigationBarState navigationBarState;
-  final FocusNode _focusNode = FocusNode();
-  final ScrollController scrollController = ScrollController();
-  final PopularController popularController = Modular.get<PopularController>();
+class _PopularPageState extends State<PopularPage> {
+  late final ScrollController scrollController;
+  PopularController get popularController => widget.controller;
 
   // Key used to position the dropdown menu for the tag selector
   final GlobalKey selectorKey = GlobalKey();
 
   @override
-  bool get wantKeepAlive => true;
-
-  @override
   void initState() {
     super.initState();
+    scrollController = ScrollController(
+      initialScrollOffset: popularController.scrollOffset,
+    );
     scrollController.addListener(scrollListener);
     if (popularController.trendList.isEmpty) {
       popularController.queryBangumiByTrend();
@@ -47,14 +46,9 @@ class _PopularPageState extends State<PopularPage>
   }
 
   @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-  }
-
-  @override
   void dispose() {
-    _focusNode.dispose();
     scrollController.removeListener(scrollListener);
+    scrollController.dispose();
     super.dispose();
   }
 
@@ -63,7 +57,8 @@ class _PopularPageState extends State<PopularPage>
     if (scrollController.position.pixels >=
             scrollController.position.maxScrollExtent - 200 &&
         !popularController.isLoadingMore) {
-      KazumiLogger().i('PopularPageController: Fetching next recommendation batch');
+      KazumiLogger()
+          .i('PopularPageController: Fetching next recommendation batch');
       if (popularController.currentTag != '') {
         popularController.queryBangumiByTag();
       } else {
@@ -73,97 +68,69 @@ class _PopularPageState extends State<PopularPage>
   }
 
   bool showWindowButton() {
-    return GStorage.setting
-        .get(SettingBoxKey.showWindowButton, defaultValue: false);
-  }
-
-  void onBackPressed(BuildContext context) {
-    if (KazumiDialog.observer.hasKazumiDialog) {
-      KazumiDialog.dismiss();
-      return;
-    }
-    if (_lastPressedAt == null ||
-        DateTime.now().difference(_lastPressedAt!) >
-            const Duration(seconds: 2)) {
-      _lastPressedAt = DateTime.now();
-      KazumiDialog.showToast(message: "再按一次退出应用", context: context);
-      return;
-    }
-    SystemNavigator.pop();
+    return GStorage.getSetting(SettingsKeys.showWindowButton);
   }
 
   @override
   Widget build(BuildContext context) {
-    super.build(context);
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (bool didPop, Object? result) {
-        if (didPop) {
-          return;
-        }
-        onBackPressed(context);
-      },
-      child: Scaffold(
-        body: CustomScrollView(
-          controller: scrollController,
-          slivers: [
-            buildSliverAppBar(),
-            SliverToBoxAdapter(
-              child: Observer(
-                builder: (_) => AnimatedOpacity(
-                  opacity: popularController.isLoadingMore ? 1.0 : 0.0,
-                  duration: const Duration(milliseconds: 300),
-                  child: popularController.isLoadingMore
-                      ? const LinearProgressIndicator(minHeight: 4)
-                      : const SizedBox(height: 4),
-                ),
+    return Scaffold(
+      body: CustomScrollView(
+        controller: scrollController,
+        slivers: [
+          buildSliverAppBar(),
+          SliverToBoxAdapter(
+            child: Observer(
+              builder: (_) => AnimatedOpacity(
+                opacity: popularController.isLoadingMore ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 300),
+                child: popularController.isLoadingMore
+                    ? const LinearProgressIndicator(minHeight: 4)
+                    : const SizedBox(height: 4),
               ),
             ),
-            SliverPadding(
-                padding: const EdgeInsets.fromLTRB(
-                    StyleString.cardSpace, 0, StyleString.cardSpace, 0),
-                sliver: Observer(builder: (_) {
-                  if (popularController.isTimeOut) {
-                    return SliverToBoxAdapter(
-                      child: SizedBox(
-                        height: 400,
-                        child: GeneralErrorWidget(
-                          errMsg: '什么都没有找到 (´;ω;`)',
-                          actions: [
-                            GeneralErrorButton(
-                              onPressed: () {
-                                if (popularController.trendList.isEmpty) {
-                                  popularController.queryBangumiByTrend();
-                                } else {
-                                  popularController.queryBangumiByTag();
-                                }
-                              },
-                              text: '点击重试',
-                            ),
-                          ],
-                        ),
+          ),
+          SliverPadding(
+              padding: const EdgeInsets.fromLTRB(
+                  StyleString.cardSpace, 0, StyleString.cardSpace, 0),
+              sliver: Observer(builder: (_) {
+                if (popularController.isTimeOut) {
+                  return SliverToBoxAdapter(
+                    child: SizedBox(
+                      height: 400,
+                      child: BangumiMirrorErrorWidget(
+                        onRetry: () {
+                          if (popularController.trendList.isEmpty) {
+                            popularController.queryBangumiByTrend();
+                          } else {
+                            popularController.queryBangumiByTag();
+                          }
+                        },
+                        onSettingsReturned: () {
+                          if (mounted) {
+                            setState(() {});
+                          }
+                        },
                       ),
-                    );
-                  }
-                  return contentGrid(
-                    (popularController.currentTag == '')
-                        ? popularController.trendList
-                        : popularController.bangumiList,
+                    ),
                   );
-                })),
-          ],
-        ),
-        floatingActionButton: FloatingActionButton(
-          onPressed: () => scrollController.animateTo(0,
-              duration: const Duration(milliseconds: 350),
-              curve: Curves.easeOut),
-          child: const Icon(Icons.arrow_upward),
-        ),
+                }
+                return contentGrid(
+                  (popularController.currentTag == '')
+                      ? popularController.trendList
+                      : popularController.bangumiList,
+                );
+              })),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        onPressed: () => scrollController.animateTo(0,
+            duration: const Duration(milliseconds: 350), curve: Curves.easeOut),
+        child: const Icon(Icons.arrow_upward),
       ),
     );
   }
 
-  Widget contentGrid(bangumiList) {
+  Widget contentGrid(List<BangumiItem> bangumiList) {
     int crossCount = 3;
     if (MediaQuery.sizeOf(context).width > LayoutBreakpoint.compact['width']!) {
       crossCount = 5;
@@ -187,11 +154,11 @@ class _PopularPageState extends State<PopularPage>
         ),
         delegate: SliverChildBuilderDelegate(
           (BuildContext context, int index) {
-            return bangumiList!.isNotEmpty
+            return bangumiList.isNotEmpty
                 ? BangumiCardV(bangumiItem: bangumiList[index])
                 : null;
           },
-          childCount: bangumiList!.isNotEmpty ? bangumiList!.length : 10,
+          childCount: bangumiList.isNotEmpty ? bangumiList.length : 10,
         ),
       ),
     );
@@ -268,18 +235,18 @@ class _PopularPageState extends State<PopularPage>
       if (MediaQuery.of(context).orientation == Orientation.portrait)
         IconButton(
           tooltip: '搜索',
-          onPressed: () => Modular.to.pushNamed('/search/'),
+          onPressed: () => context.pushNamed('/search/'),
           icon: const Icon(Icons.search),
         ),
     ];
     actions.add(
       IconButton(
         tooltip: '历史记录',
-        onPressed: () => Modular.to.pushNamed('/settings/history/'),
+        onPressed: () => context.pushNamed('/settings/history/'),
         icon: const Icon(Icons.history),
       ),
     );
-    if (Utils.isDesktop()) {
+    if (isDesktop()) {
       if (!showWindowButton()) {
         actions.add(
           IconButton(

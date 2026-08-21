@@ -1,13 +1,16 @@
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
+import 'package:kazumi/modules/bangumi/bangumi_interest.dart';
 import 'package:kazumi/modules/bangumi/bangumi_item.dart';
+import 'package:kazumi/modules/bangumi/bangumi_relation.dart';
 import 'package:kazumi/pages/collect/collect_controller.dart';
 import 'package:kazumi/utils/bangumi_auth.dart';
 import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/modules/bangumi/subject_relation.dart';
 import 'package:kazumi/modules/search/plugin_search_module.dart';
+import 'package:kazumi/pages/info/rating_review_dialog.dart';
 import 'package:kazumi/request/apis/bangumi_api.dart';
 import 'package:mobx/mobx.dart';
-import 'package:kazumi/utils/logger.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/modules/comments/comment_item.dart';
 import 'package:kazumi/modules/characters/character_item.dart';
 import 'package:kazumi/modules/staff/staff_item.dart';
@@ -17,7 +20,9 @@ part 'info_controller.g.dart';
 class InfoController = _InfoController with _$InfoController;
 
 abstract class _InfoController with Store {
-  final CollectController collectController = Modular.get<CollectController>();
+  _InfoController(this.collectController);
+
+  final CollectController collectController;
   late BangumiItem bangumiItem;
 
   @observable
@@ -27,7 +32,7 @@ abstract class _InfoController with Store {
   var pluginSearchResponseList = ObservableList<PluginSearchResponse>();
 
   @observable
-  var pluginSearchStatus = ObservableMap<String, String>();
+  var pluginSearchStatus = ObservableMap<String, PluginSearchStatus>();
 
   @observable
   var commentsList = ObservableList<CommentItem>();
@@ -77,23 +82,7 @@ abstract class _InfoController with Store {
   Future<void> queryBangumiInfoByID(int id, {String type = "init"}) async {
     isLoading = true;
     try {
-      final value = await BangumiApi.getBangumiInfoByID(id);
-      if (value != null) {
-        if (type == "init") {
-          bangumiItem = value;
-        } else {
-          bangumiItem.summary = value.summary;
-          bangumiItem.tags = value.tags;
-          bangumiItem.rank = value.rank;
-          bangumiItem.airDate = value.airDate;
-          bangumiItem.airWeekday = value.airWeekday;
-          bangumiItem.alias = value.alias;
-          bangumiItem.ratingScore = value.ratingScore;
-          bangumiItem.votes = value.votes;
-          bangumiItem.votesCount = value.votesCount;
-        }
-        collectController.updateLocalCollect(bangumiItem);
-      }
+      await _updateBangumiInfoByID(id, type: type);
     } finally {
       isLoading = false;
     }
@@ -148,11 +137,75 @@ abstract class _InfoController with Store {
     if (offset == 0) {
       commentsList.clear();
     }
+    if (type == "init") {
+      bangumiItem = value;
+    } else {
+      bangumiItem.summary = value.summary;
+      bangumiItem.tags = value.tags;
+      bangumiItem.rank = value.rank;
+      bangumiItem.airDate = value.airDate;
+      bangumiItem.airWeekday = value.airWeekday;
+      bangumiItem.alias = value.alias;
+      bangumiItem.ratingScore = value.ratingScore;
+      bangumiItem.votes = value.votes;
+      bangumiItem.votesCount = value.votesCount;
+      final incomingInterest = value.interest;
+      final previousInterest = bangumiItem.interest;
+      if (incomingInterest == null) {
+        bangumiItem.interest = null;
+      } else if (previousInterest == null || !previousInterest.hasUserProfile) {
+        bangumiItem.interest = incomingInterest;
+      } else {
+        bangumiItem.interest =
+            incomingInterest.copyWithUser(user: previousInterest.user);
+      }
+    }
+    await collectController.updateLocalCollect(bangumiItem);
+  }
+
+  Future<void> queryBangumiCommentsByID(int id, {bool refresh = true}) async {
+    await _updateBangumiCommentsByID(
+      id,
+      refresh: refresh,
+      clearBeforeFetch: true,
+    );
+  }
+
+  Future<void> _updateBangumiCommentsByID(
+    int id, {
+    required bool refresh,
+    required bool clearBeforeFetch,
+  }) async {
+    if (refresh) {
+      if (clearBeforeFetch) {
+        clearComments();
+      }
+    }
+    final offset = refresh ? 0 : _commentsOffset;
     await BangumiApi.getBangumiCommentsByID(id, offset: offset).then((value) {
-      commentsList.addAll(value.commentList);
+      if (refresh && !clearBeforeFetch) {
+        commentsList = ObservableList<CommentItem>.of(value.commentList);
+      } else {
+        commentsList.addAll(value.commentList);
+      }
+      _commentsOffset = refresh
+          ? value.commentList.length
+          : _commentsOffset + value.commentList.length;
+      _removeCurrentUserFromPublicComments();
     });
     KazumiLogger().i(
-        'InfoController: loaded comments list length ${commentsList.length}');
+        'InfoController: loaded comments list length ${commentsList.length}, offset $_commentsOffset');
+  }
+
+  Future<void> refreshBangumiCommentsSilently(int id) async {
+    if (commentsList.isEmpty) {
+      return;
+    }
+    await _updateBangumiCommentsByID(
+      id,
+      refresh: true,
+      clearBeforeFetch: false,
+    );
   }
 
   Future<void> queryBangumiCharactersByID(int id) async {

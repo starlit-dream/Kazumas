@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:kazumi/bean/widget/bangumi_avatar.dart';
 import 'package:kazumi/modules/staff/staff_item.dart';
 
 class StaffCard extends StatelessWidget {
@@ -12,10 +13,8 @@ class StaffCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return ListTile(
-      leading: CircleAvatar(
-        backgroundImage: staffFullItem.staff.images?.grid == null
-            ? NetworkImage('https://bangumi.tv/img/info_only.png')
-            : NetworkImage(staffFullItem.staff.images!.grid),
+      leading: BangumiAvatar(
+        imageUrl: staffFullItem.staff.images?.grid ?? '',
       ),
       title: Text(
         staffFullItem.staff.name,
@@ -25,8 +24,8 @@ class StaffCard extends StatelessWidget {
       subtitle: staffFullItem.staff.nameCN.isNotEmpty
           ? Text(staffFullItem.staff.nameCN)
           : null,
-      trailing: Text(staffFullItem.positions.isNotEmpty
-          ? (staffFullItem.positions[0].type.cn)
+      trailing: Text(staffFullItem.relations.isNotEmpty
+          ? staffFullItem.relations.first
           : ''),
     );
   }

@@ -1,21 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
-import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/bean/appbar/sys_app_bar.dart';
 import 'package:kazumi/bean/card/bangumi_history_card.dart';
 import 'package:kazumi/bean/dialog/dialog_helper.dart';
+import 'package:kazumi/bean/widget/empty_state_widget.dart';
 import 'package:kazumi/pages/history/history_controller.dart';
 import 'package:kazumi/utils/constants.dart';
 
 class HistoryPage extends StatefulWidget {
-  const HistoryPage({super.key});
+  const HistoryPage({
+    super.key,
+    required this.controller,
+  });
+
+  final HistoryController controller;
 
   @override
   State<HistoryPage> createState() => _HistoryPageState();
 }
 
 class _HistoryPageState extends State<HistoryPage> {
-  final HistoryController historyController = Modular.get<HistoryController>();
+  HistoryController get historyController => widget.controller;
 
   bool showDelete = false;
 
@@ -107,23 +112,10 @@ class _HistoryPageState extends State<HistoryPage> {
     if (historyController.histories.isNotEmpty) {
       return contentGrid;
     } else {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.history_rounded,
-              size: 72,
-              color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.5),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              '没有找到历史记录',
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.outline,
-                  ),
-            ),
-          ],
+      return const Center(
+        child: GeneralEmptyState(
+          icon: Icons.history_rounded,
+          title: '暂无历史记录',
         ),
       );
     }
@@ -140,9 +132,8 @@ class _HistoryPageState extends State<HistoryPage> {
 
     final double screenWidth = MediaQuery.sizeOf(context).width;
     final double maxContentWidth = 1000;
-    final double horizontalPadding = screenWidth > maxContentWidth
-        ? (screenWidth - maxContentWidth) / 2
-        : 0;
+    final double horizontalPadding =
+        screenWidth > maxContentWidth ? (screenWidth - maxContentWidth) / 2 : 0;
 
     return CustomScrollView(
       slivers: [

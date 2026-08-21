@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'package:webview_windows/webview_windows.dart';
 import 'package:kazumi/webview/video/video_webview_controller.dart';
-import 'package:kazumi/utils/storage.dart';
-import 'package:kazumi/utils/proxy_utils.dart';
-import 'package:kazumi/utils/logger.dart';
+import 'package:kazumi/services/storage/storage.dart';
+import 'package:kazumi/services/network/proxy_utils.dart';
+import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/services/video_source/video_source_format.dart';
 
 class VideoWebviewWindowsImpl
     extends VideoWebviewController<WebviewController> {
@@ -21,15 +22,12 @@ class VideoWebviewWindowsImpl
   }
 
   Future<void> _setupProxy() async {
-    final setting = GStorage.setting;
-    final bool proxyEnable =
-        setting.get(SettingBoxKey.proxyEnable, defaultValue: false);
+    final bool proxyEnable = GStorage.getSetting(SettingsKeys.proxyEnable);
     if (!proxyEnable) {
       return;
     }
 
-    final String proxyUrl =
-        setting.get(SettingBoxKey.proxyUrl, defaultValue: '');
+    final String proxyUrl = GStorage.getSetting(SettingsKeys.proxyUrl);
     final formattedProxy = ProxyUtils.getFormattedProxyUrl(proxyUrl);
     if (formattedProxy == null) {
       return;
@@ -65,7 +63,10 @@ class VideoWebviewWindowsImpl
       isVideoSourceLoaded = true;
       videoLoadingEventController.add(false);
       logEventController.add('Loading m3u8 source: $url');
-      videoParserEventController.add((url, offset));
+      notifyVideoSourceResolved(
+        url,
+        format: VideoSourceFormat.hls,
+      );
     }));
     subscriptions.add(headlessWebview!.onVideoSourceLoaded.listen((data) {
       if (headlessWebview == null) return;
@@ -78,32 +79,33 @@ class VideoWebviewWindowsImpl
       isVideoSourceLoaded = true;
       videoLoadingEventController.add(false);
       logEventController.add('Loading video source: $url');
-      videoParserEventController.add((url, offset));
+      notifyVideoSourceResolved(url);
     }));
     await headlessWebview!.loadUrl(url);
   }
 
   @override
   Future<void> unloadPage() async {
-    subscriptions.forEach((s) {
+    for (final s in subscriptions) {
       try {
         s.cancel();
       } catch (_) {}
-    });
+    }
     subscriptions.clear();
     await redirect2Blank();
   }
 
   @override
-  void dispose() {
-    subscriptions.forEach((s) {
+  Future<void> dispose() async {
+    for (final s in subscriptions) {
       try {
         s.cancel();
       } catch (_) {}
-    });
+    }
     subscriptions.clear();
-    headlessWebview?.dispose();
+    await headlessWebview?.dispose();
     headlessWebview = null;
+    disposeEventControllers();
   }
 
   // The webview_windows package does not have a method to unload the current page.

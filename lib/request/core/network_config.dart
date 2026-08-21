@@ -1,10 +1,10 @@
 import 'dart:io';
 
 import 'package:dio/io.dart';
-import 'package:hive_ce/hive.dart';
-import 'package:kazumi/utils/logger.dart';
-import 'package:kazumi/utils/proxy_utils.dart';
-import 'package:kazumi/utils/storage.dart';
+import 'package:kazumi/services/logging/logger.dart';
+import 'package:kazumi/services/network/proxy_utils.dart';
+import 'package:kazumi/services/network/system_proxy_service.dart';
+import 'package:kazumi/services/storage/storage.dart';
 
 class NetworkConfig {
   const NetworkConfig({
@@ -33,6 +33,8 @@ class NetworkConfig {
         final client = HttpClient();
         if (hasProxy) {
           client.findProxy = (_) => 'PROXY $proxyHost:$proxyPort';
+        } else if (Platform.isWindows) {
+          client.findProxy = SystemProxyService.findProxy;
         }
         if (allowBadCertificates) {
           client.badCertificateCallback = (cert, host, port) => true;
@@ -69,9 +71,7 @@ class NetworkConfig {
     Duration receiveTimeout = const Duration(seconds: 12),
     Duration? sendTimeout,
   }) {
-    final Box setting = GStorage.setting;
-    final bool proxyEnable =
-        setting.get(SettingBoxKey.proxyEnable, defaultValue: false);
+    final bool proxyEnable = GStorage.getSetting(SettingsKeys.proxyEnable);
     if (!proxyEnable) {
       return NetworkConfig(
         connectTimeout: connectTimeout,
@@ -80,7 +80,7 @@ class NetworkConfig {
       );
     }
 
-    final proxyUrl = setting.get(SettingBoxKey.proxyUrl, defaultValue: '');
+    final proxyUrl = GStorage.getSetting(SettingsKeys.proxyUrl);
     final parsed = ProxyUtils.parseProxyUrl(proxyUrl);
     if (parsed == null) {
       KazumiLogger().w('Proxy: 代理地址格式错误或为空');

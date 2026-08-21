@@ -9,9 +9,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:kazumi/modules/danmaku/danmaku_module.dart';
 import 'package:kazumi/request/config/api_endpoints.dart';
-import 'package:kazumi/request/clients/github_client.dart';
 import 'package:kazumi/utils/constants.dart';
-import 'package:kazumi/utils/logger.dart';
+import 'package:kazumi/services/logging/logger.dart';
 import 'package:kazumi/utils/mortis.dart';
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -279,11 +278,9 @@ class Utils {
   }
 
   static Future<String> latest() async {
-    try {
-      return await GithubClient.instance.latestVersion();
-    } catch (e) {
-      return ApiEndpoints.version;
-    }
+    // Upstream removed GithubClient; version checks now live in
+    // services/update/auto_updater.dart. Keep a stable fallback here.
+    return ApiEndpoints.version;
   }
 
   static oledDarkTheme(ThemeData defaultDarkTheme) {

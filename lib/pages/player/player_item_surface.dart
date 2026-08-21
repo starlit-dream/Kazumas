@@ -1,24 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_mobx/flutter_mobx.dart';
 import 'package:media_kit_video/media_kit_video.dart';
-import 'package:flutter_modular/flutter_modular.dart';
 import 'package:kazumi/pages/player/player_controller.dart';
 
 class PlayerItemSurface extends StatefulWidget {
-  const PlayerItemSurface({super.key});
+  const PlayerItemSurface({
+    super.key,
+    required this.playerController,
+  });
+
+  final PlayerController playerController;
 
   @override
   State<PlayerItemSurface> createState() => _PlayerItemSurfaceState();
 }
 
 class _PlayerItemSurfaceState extends State<PlayerItemSurface> {
-  final PlayerController playerController = Modular.get<PlayerController>();
-
   @override
   Widget build(BuildContext context) {
+    final playerController = widget.playerController;
     return Observer(builder: (context) {
-      if (playerController.loading ||
-          playerController.videoController == null) {
+      if (playerController.playback.loading ||
+          playerController.playback.videoController == null) {
         return Container(
           color: Colors.black,
           child: const Center(
@@ -27,15 +30,12 @@ class _PlayerItemSurfaceState extends State<PlayerItemSurface> {
         );
       }
 
-      return Video(
-        controller: playerController.videoController!,
+      final aspectRatioMode = playerController.panel.aspectRatioMode;
+      final video = Video(
+        controller: playerController.playback.videoController!,
         controls: NoVideoControls,
         pauseUponEnteringBackgroundMode: false,
-        fit: playerController.aspectRatioType == 1
-            ? BoxFit.contain
-            : playerController.aspectRatioType == 2
-                ? BoxFit.cover
-                : BoxFit.fill,
+        fit: aspectRatioMode.fit,
         subtitleViewConfiguration: SubtitleViewConfiguration(
           style: TextStyle(
             color: Colors.pink,
@@ -59,6 +59,15 @@ class _PlayerItemSurfaceState extends State<PlayerItemSurface> {
           textAlign: TextAlign.center,
           padding: const EdgeInsets.all(24.0),
         ),
+      );
+
+      final frameAspectRatio = aspectRatioMode.frameAspectRatio;
+      if (frameAspectRatio == null) {
+        return video;
+      }
+      return AspectRatio(
+        aspectRatio: frameAspectRatio,
+        child: video,
       );
     });
   }

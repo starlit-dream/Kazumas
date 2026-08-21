@@ -1,5 +1,5 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:kazumi/navigation.dart';
 import 'package:kazumi/utils/constants.dart';
 
 // A simple dialog helper class to show dialogs and toasts based on flutter native implementation (replace flutter_smart_dialog)
@@ -19,11 +19,13 @@ class KazumiDialog {
     VoidCallback? onDismiss,
     required WidgetBuilder builder,
   }) async {
-    final ctx = context ?? observer.currentContext;
+    final ctx =
+        context ?? rootNavigatorKey.currentContext ?? observer.currentContext;
     if (ctx != null && ctx.mounted) {
       try {
         final result = await showDialog<T>(
           context: ctx,
+          useRootNavigator: true,
           barrierDismissible: clickMaskDismiss ?? true,
           builder: builder,
           routeSettings: const RouteSettings(name: 'KazumiDialog'),
@@ -49,16 +51,17 @@ class KazumiDialog {
     Function()? onActionPressed,
     Duration duration = const Duration(seconds: 2),
   }) {
-    final ctx = context ?? observer.scaffoldContext;
-    if (ctx != null && ctx.mounted) {
+    final messenger = _resolveScaffoldMessenger(context);
+    final toastContext = _resolveToastContext(context);
+    if (messenger != null && toastContext != null && toastContext.mounted) {
       try {
-        ScaffoldMessenger.of(ctx)
+        messenger
           ..removeCurrentSnackBar()
           ..showSnackBar(
             SnackBar(
               content: Text(message),
               behavior: SnackBarBehavior.floating,
-              width: MediaQuery.sizeOf(ctx).width >
+              width: MediaQuery.sizeOf(toastContext).width >
                       LayoutBreakpoint.medium['width']!
                   ? 600
                   : null,
@@ -69,7 +72,7 @@ class KazumiDialog {
                       label: actionLabel ?? 'Dismiss',
                       onPressed: () {
                         onActionPressed?.call();
-                        ScaffoldMessenger.of(ctx).hideCurrentSnackBar();
+                        messenger.hideCurrentSnackBar();
                       },
                     )
                   : null,
@@ -80,7 +83,7 @@ class KazumiDialog {
       }
     } else {
       debugPrint(
-          'Kazumi Dialog Error: No Scaffold context available to show Toast');
+          'Kazumi Dialog Error: No ScaffoldMessenger available to show Toast');
     }
   }
 
@@ -90,11 +93,13 @@ class KazumiDialog {
     bool barrierDismissible = false,
     Function()? onDismiss,
   }) async {
-    final ctx = context ?? observer.currentContext;
+    final ctx =
+        context ?? rootNavigatorKey.currentContext ?? observer.currentContext;
     if (ctx != null && ctx.mounted) {
       try {
         await showDialog(
           context: ctx,
+          useRootNavigator: true,
           barrierDismissible: barrierDismissible,
           builder: (BuildContext context) {
             return Center(
@@ -150,7 +155,10 @@ class KazumiDialog {
     bool useSafeArea = false,
   }) async {
     // Use provided context first, then root context, then fallback to current context
-    final ctx = context ?? observer.rootContext ?? observer.currentContext;
+    final ctx = context ??
+        rootNavigatorKey.currentContext ??
+        observer.rootContext ??
+        observer.currentContext;
     if (ctx != null && ctx.mounted) {
       try {
         final result = await showModalBottomSheet<T>(
@@ -203,68 +211,110 @@ class KazumiDialog {
   /// The caller is responsible for dismissing any currently-open dialog
   /// BEFORE calling this method.
   ///
-  /// [onComplete] is invoked inside [onDismiss] after the countdown finishes
-  /// (or if the dialog is dismissed for any other reason), ensuring it runs
-  /// exactly once and resources are always cleaned up.
+  /// [onComplete] is invoked after the dialog route finishes.
   static void showTimedSuccessDialog({
     required String title,
     required String message,
     required VoidCallback onComplete,
     Duration duration = const Duration(seconds: 3),
   }) {
-    final progressNotifier = ValueNotifier<double>(0.0);
-    Timer? countdownTimer;
-    final totalMs = duration.inMilliseconds;
-    final stopwatch = Stopwatch()..start();
-    countdownTimer = Timer.periodic(const Duration(milliseconds: 16), (t) {
-      final elapsed = stopwatch.elapsedMilliseconds;
-      progressNotifier.value = (elapsed / totalMs).clamp(0.0, 1.0);
-      if (elapsed >= totalMs) {
-        t.cancel();
-        KazumiDialog.dismiss();
+    KazumiDialog.show<bool>(
+      clickMaskDismiss: false,
+      builder: (context) => _TimedSuccessDialog(
+        title: title,
+        message: message,
+        duration: duration,
+      ),
+    ).then((completed) {
+      if (completed == true) {
+        onComplete();
       }
     });
-    KazumiDialog.show(
-      clickMaskDismiss: false,
-      onDismiss: () {
-        countdownTimer?.cancel();
-        progressNotifier.dispose();
-        onComplete();
-      },
-      builder: (context) => Dialog(
-        clipBehavior: Clip.antiAlias,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
-          child: SizedBox(
-            width: 320,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Icon(
-                  Icons.check_circle_rounded,
-                  size: 52,
-                  color: Theme.of(context).colorScheme.primary,
+  }
+
+  static ScaffoldMessengerState? _resolveScaffoldMessenger(
+    BuildContext? context,
+  ) {
+    if (context != null && context.mounted) {
+      final scopedMessenger = ScaffoldMessenger.maybeOf(context);
+      if (scopedMessenger != null) {
+        return scopedMessenger;
+      }
+    }
+    return rootScaffoldMessengerKey.currentState;
+  }
+
+  static BuildContext? _resolveToastContext(BuildContext? context) {
+    if (context != null && context.mounted) {
+      return context;
+    }
+    final messengerContext = rootScaffoldMessengerKey.currentContext;
+    if (messengerContext != null && messengerContext.mounted) {
+      return messengerContext;
+    }
+    return observer.scaffoldContext;
+  }
+}
+
+class _TimedSuccessDialog extends StatelessWidget {
+  const _TimedSuccessDialog({
+    required this.title,
+    required this.message,
+    required this.duration,
+  });
+
+  final String title;
+  final String message;
+  final Duration duration;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final textTheme = Theme.of(context).textTheme;
+    return Dialog(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: SizedBox(
+          width: 300,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: colorScheme.secondaryContainer,
+                  shape: BoxShape.circle,
                 ),
-                const SizedBox(height: 16),
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleLarge,
+                child: Icon(
+                  Icons.check_rounded,
+                  size: 32,
+                  color: colorScheme.onSecondaryContainer,
                 ),
-                const SizedBox(height: 6),
-                Text(
-                  message,
-                  style: Theme.of(context).textTheme.bodyMedium,
-                ),
-                const SizedBox(height: 24),
-                ValueListenableBuilder<double>(
-                  valueListenable: progressNotifier,
-                  builder: (context, value, _) => LinearProgressIndicator(
-                    value: value,
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ],
-            ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                title,
+                style: textTheme.headlineSmall,
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 8),
+              Text(
+                message,
+                style: textTheme.bodyMedium
+                    ?.copyWith(color: colorScheme.onSurfaceVariant),
+                textAlign: TextAlign.center,
+              ),
+              const SizedBox(height: 24),
+              TweenAnimationBuilder<double>(
+                tween: Tween(begin: 0.0, end: 1.0),
+                duration: duration,
+                onEnd: () => KazumiDialog.dismiss(popWith: true),
+                builder: (context, value, _) =>
+                    LinearProgressIndicator(value: value),
+              ),
+            ],
           ),
         ),
       ),
@@ -276,6 +326,7 @@ class KazumiDialog {
 class KazumiDialogObserver extends NavigatorObserver {
   /// List of active dialog routes
   final List<Route<dynamic>> _kazumiDialogRoutes = [];
+  bool _snackBarClearScheduled = false;
 
   /// The most recent context from any MaterialPageRoute or PopupRoute
   BuildContext? _currentContext;
@@ -303,12 +354,6 @@ class KazumiDialogObserver extends NavigatorObserver {
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPush(route, previousRoute);
-
-    /// workaround for #533
-    /// we can't remove snackbar when push a new route
-    /// otherwise, framework will throw an exception, and can't be caught
-    /// need other way to remove snackbar here
-    // _removeCurrentSnackBar(previousRoute);
     if (_isKazumiDialogRoute(route)) {
       _kazumiDialogRoutes.add(route);
     }
@@ -320,7 +365,7 @@ class KazumiDialogObserver extends NavigatorObserver {
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didPop(route, previousRoute);
-    _removeCurrentSnackBar(route);
+    _scheduleSnackBarClear();
     if (_isKazumiDialogRoute(route)) {
       _kazumiDialogRoutes.remove(route);
     }
@@ -332,6 +377,7 @@ class KazumiDialogObserver extends NavigatorObserver {
   @override
   void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
     super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
+    _scheduleSnackBarClear();
     if (_isKazumiDialogRoute(oldRoute!)) {
       _kazumiDialogRoutes.remove(oldRoute);
     }
@@ -346,6 +392,7 @@ class KazumiDialogObserver extends NavigatorObserver {
   @override
   void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
     super.didRemove(route, previousRoute);
+    _scheduleSnackBarClear();
 
     if (_isKazumiDialogRoute(route)) {
       _kazumiDialogRoutes.remove(route);
@@ -375,12 +422,15 @@ class KazumiDialogObserver extends NavigatorObserver {
         route.settings.name == 'KazumiBottomSheet';
   }
 
-  void _removeCurrentSnackBar(Route<dynamic>? route) {
-    if (route?.navigator?.context != null) {
-      try {
-        ScaffoldMessenger.maybeOf(route!.navigator!.context)
-            ?.removeCurrentSnackBar();
-      } catch (_) {}
-    }
+  void _scheduleSnackBarClear() {
+    if (_snackBarClearScheduled) return;
+    _snackBarClearScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _snackBarClearScheduled = false;
+      // Route observer callbacks run while Navigator is reconciling routes.
+      // Clearing the root messenger after the frame avoids mutating UI state
+      // in the middle of that reconciliation.
+      rootScaffoldMessengerKey.currentState?.removeCurrentSnackBar();
+    });
   }
 }
