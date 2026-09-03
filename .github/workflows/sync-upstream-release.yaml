@@ -4,6 +4,17 @@ on:
   schedule:
     - cron: '0 0 * * *'
   workflow_dispatch:
+    inputs:
+      upstream_tag:
+        description: '指定要同步的上游 tag（留空则取最新 release）'
+        required: false
+        default: ''
+        type: string
+      auto_merge:
+        description: 'PR 创建后开启自动合并（需仓库开启 auto-merge）'
+        required: false
+        default: false
+        type: boolean
 
 # 同步过程涉及 git push -f 与 PR 创建，禁止并发
 concurrency:
@@ -16,8 +27,21 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
-      actions: write
-      repository-projects: read
+      issues: write
+
+    env:
+      UPSTREAM_REPO: "Predidit/Kazumi"
+      FORK_REPO: ${{ github.repository }}
+      # fork 自有文件：无论冲突与否，合并后一律强制恢复为 fork(main) 版本。
+      # 上游 2.2.x 已删除 mortis.dart / bangumi_oauth.dart，不保护会被合并删掉，
+      # 导致 main-push / release 的凭据注入直接失败。
+      PROTECTED_PATHS: |
+        lib/utils/mortis.dart
+        lib/utils/bangumi_oauth.dart
+        RELEASE_NOTES.md
+        README.md
+        assets/linux/io.github.starlitdream.Kazumas.desktop
+        plans/
 
     steps:
       - name: Checkout
@@ -25,61 +49,304 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Add upstream remote if not exists
+      - name: Add upstream remote and fetch tags
         run: |
-          git remote | grep '^upstream$' || git remote add upstream "https://github.com/$UPSTREAM_REPO.git"
-        env:
-          UPSTREAM_REPO: "Predidit/Kazumi"
+          set -euo pipefail
+          git remote | grep -q '^upstream$' || \
+            git remote add upstream "https://github.com/$UPSTREAM_REPO.git"
+          # --force：上游重新打 tag 时以 upstream 为准更新本地 tag
+          git fetch upstream --tags --force
 
-      - name: Sync via GitHub CLI
+      - name: Resolve target tag
+        id: resolve
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          UPSTREAM_REPO: "Predidit/Kazumi"
+          MANUAL_TAG: ${{ inputs.upstream_tag }}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          LATEST_TAG=$(gh api repos/$UPSTREAM_REPO/releases/latest --jq '.tag_name')
+          set -euo pipefail
+          if [ -n "$MANUAL_TAG" ]; then
+            LATEST_TAG="$MANUAL_TAG"
+          else
+            LATEST_TAG=$(gh api "repos/$UPSTREAM_REPO/releases/latest" --jq '.tag_name')
+          fi
           echo "Upstream Release: $LATEST_TAG"
+          echo "tag=$LATEST_TAG" >> "$GITHUB_OUTPUT"
 
-          if git rev-parse "$LATEST_TAG" >/dev/null 2>&1; then
-            echo "Already up to date."
+          if ! git rev-parse -q --verify "$LATEST_TAG^{commit}" >/dev/null; then
+            echo "::error::上游 tag $LATEST_TAG 本地不存在，fetch upstream --tags 可能失败"
+            exit 1
+          fi
+
+          # 已同步判定：上游 tag 的提交已是 main 的祖先（PR 合并或手动合并均可识别）。
+          # 旧版用 `git rev-parse $TAG` 判断，但 fork 从不接收上游 tag，该判定永远
+          # 不生效，导致 PR 合并后每天重复合并、force-push 出新的合并提交。
+          if git merge-base --is-ancestor "$LATEST_TAG" main; then
+            echo "Upstream release $LATEST_TAG is already merged into main. Nothing to do."
+            echo "skip=true" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
-          git fetch upstream --tags
+          # 该 tag 的同步分支已存在且已包含 tag => 对应 PR 正在等待合并，
+          # 跳过本次运行，避免每天产生新的合并提交把 PR 分支刷掉
+          SYNC_BRANCH="sync-upstream-$LATEST_TAG"
+          if git ls-remote --heads origin "$SYNC_BRANCH" | grep -q .; then
+            git fetch origin "$SYNC_BRANCH"
+            if git merge-base --is-ancestor "$LATEST_TAG" FETCH_HEAD; then
+              echo "Sync branch $SYNC_BRANCH already contains $LATEST_TAG (PR pending). Nothing to do."
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+            fi
+          fi
+
+      - name: Create sync branch and merge
+        id: merge
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           SYNC_BRANCH="sync-upstream-$LATEST_TAG"
-          if git show-ref --quiet refs/heads/"$SYNC_BRANCH"; then
-            git branch -D "$SYNC_BRANCH"
-          fi
-          git checkout -b "$SYNC_BRANCH" main
+          git checkout -B "$SYNC_BRANCH" main
 
-          if git merge "$LATEST_TAG" --allow-unrelated-histories -m "Sync upstream release $LATEST_TAG"; then
-            echo "Merge succeeded."
+          CONFLICTS_FILE=/tmp/conflicts.txt
+          : > "$CONFLICTS_FILE"
+
+          # 1) 先尝试正常三方合并（--no-ff 保证一定产生合并提交，
+          #    后面的 amend 与"已同步"判定才可靠）
+          if git merge "$LATEST_TAG" --no-ff --allow-unrelated-histories \
+               -m "Sync upstream release $LATEST_TAG"; then
+            echo "Merge succeeded without conflicts."
           else
-            echo "Conflict detected. Resolving with upstream version..."
+            # 记录冲突文件清单（人工复核时最重要的信息），随后放弃本次合并重来
+            git diff --name-only --diff-filter=U > "$CONFLICTS_FILE" || true
+            echo "Conflicts detected in:"
+            cat "$CONFLICTS_FILE"
             git merge --abort
-            git merge "$LATEST_TAG" --allow-unrelated-histories \
-                       -X theirs \
-                       -m "Sync upstream release $LATEST_TAG"
+
+            # 2) 内容冲突按上游版本解决（-X theirs）。该策略曾静默改坏 fork 定制
+            #    代码（storage.dart / api.dart，见 3a983b5c），因此必须先通过后续
+            #    的 analyze 校验，才会推送分支 / 创建 PR。
+            #    注意：-X theirs 处理不了 modify/delete 冲突（git 官方文档），
+            #    这是旧版线上每天失败的直接原因，需要下面的显式兜底。
+            echo "Retrying merge with -X theirs..."
+            if ! git merge "$LATEST_TAG" --no-ff --allow-unrelated-histories \
+                   -X theirs --no-commit; then
+              echo "Resolving modify/delete conflicts by taking upstream version..."
+              while IFS= read -r p; do
+                [ -z "$p" ] && continue
+                echo "  taking upstream version of: $p"
+                if ! git checkout "$LATEST_TAG" -- "$p" 2>/dev/null; then
+                  # 上游已删除该文件，fallback 为删除
+                  git rm -f --quiet -- "$p" 2>/dev/null || true
+                fi
+                git add -f -- "$p" 2>/dev/null || true
+              done < <(git diff --name-only --diff-filter=U)
+            fi
+
+            REMAINING=$(git diff --name-only --diff-filter=U || true)
+            if [ -n "$REMAINING" ]; then
+              {
+                echo "自动同步上游 \`$LATEST_TAG\` 时出现无法自动解决的冲突："
+                echo ""
+                echo '```'
+                echo "$REMAINING"
+                echo '```'
+                echo ""
+                echo "本次未推送分支、未创建 PR，请人工合并："
+                echo ""
+                echo '```bash'
+                echo "git fetch upstream --tags"
+                echo "git checkout -b $SYNC_BRANCH origin/main"
+                echo "git merge $LATEST_TAG"
+                echo '```'
+              } > /tmp/issue_body.md
+              ISSUE_TITLE="上游同步失败：$LATEST_TAG 存在无法自动解决的冲突"
+              OPEN_COUNT=$(gh issue list --state open --repo "$FORK_REPO" \
+                             --search "$ISSUE_TITLE in:title" --json number --jq 'length')
+              if [ "$OPEN_COUNT" = "0" ]; then
+                gh issue create --repo "$FORK_REPO" --title "$ISSUE_TITLE" \
+                  --body-file /tmp/issue_body.md
+              else
+                echo "同名 issue 已存在，跳过创建"
+              fi
+              exit 1
+            fi
+            git commit -m "Sync upstream release $LATEST_TAG"
           fi
 
-          git push -f origin "$SYNC_BRANCH"
+          # 3) fork 自有文件强制恢复 fork(main) 版本（干净合并也可能因上游删除
+          #    同名文件而丢失）；目录级保护先清空再恢复，避免上游新增文件残留
+          RESTORED=""
+          while IFS= read -r p; do
+            [ -z "$p" ] && continue
+            if git cat-file -e "main:$p" 2>/dev/null; then
+              if [ "$(git cat-file -t "main:$p")" = "tree" ]; then
+                git rm -rf --quiet --ignore-unmatch -- "$p" || true
+              fi
+              git checkout main -- "$p"
+              RESTORED="$RESTORED $p"
+              echo "restored fork-owned path: $p"
+            else
+              echo "WARN: $p 不在 fork main 上，跳过保护"
+            fi
+          done <<< "$PROTECTED_PATHS"
+          if [ -n "$RESTORED" ]; then
+            # shellcheck disable=SC2086
+            git add -f $RESTORED
+            git commit --amend --no-edit
+          fi
 
-          cat > /tmp/pr_body.md << EOM
-          自动同步上游 [Predidit/Kazumi](https://github.com/Predidit/Kazumi/releases/tag/$LATEST_TAG)
-          
-          由 GitHub Actions 自动创建，同步上游(https://github.com/Predidit/Kazumi/releases/tag/$LATEST_TAG)。
+          # 4) 凭据注入文件必须存在，否则 main-push / release 构建必挂
+          for f in lib/utils/mortis.dart lib/utils/bangumi_oauth.dart; do
+            if git cat-file -e "main:$f" 2>/dev/null && [ ! -f "$f" ]; then
+              echo "::error::受保护文件 $f 在合并后缺失"
+              exit 1
+            fi
+          done
 
-          EOM
+          {
+            echo "conflicts<<CONFLICTS_EOF"
+            cat "$CONFLICTS_FILE"
+            echo "CONFLICTS_EOF"
+            echo "restored=${RESTORED# }"
+          } >> "$GITHUB_OUTPUT"
 
-          if gh pr list --head "$SYNC_BRANCH" --repo starlit-dream/Kazumas | grep -q .; then
-            echo "PR already exists for $SYNC_BRANCH"
+      - name: Set up Flutter
+        if: steps.resolve.outputs.skip != 'true'
+        uses: subosito/flutter-action@v2.16.0
+        with:
+          channel: stable
+          flutter-version-file: pubspec.yaml
+          cache: true
+
+      - name: Validate merged code
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_TAG: ${{ steps.resolve.outputs.tag }}
+          CONFLICT_FILES: ${{ steps.merge.outputs.conflicts }}
+        run: |
+          set -euo pipefail
+          # 与 quality.yaml 相同的静态检查（同一 Flutter 版本）：自动合并的结果
+          # 必须先通过校验，避免把 storage.dart / api.dart 那样的静默破坏推成 PR
+          set +e
+          flutter pub get > /tmp/pubget.log 2>&1; PUB=$?
+          dart format --output=none --set-exit-if-changed . > /tmp/fmt.log 2>&1; FMT=$?
+          flutter analyze --no-pub > /tmp/analyze.log 2>&1; ANA=$?
+          set -e
+          echo "pub get: $PUB, dart format: $FMT, flutter analyze: $ANA"
+
+          if [ "$PUB" -ne 0 ] || [ "$FMT" -ne 0 ] || [ "$ANA" -ne 0 ]; then
+            {
+              echo "自动同步上游 \`$LATEST_TAG\` 时，合并可以完成，但合并结果未通过代码校验。"
+              echo ""
+              echo "为避免静默破坏 fork 定制代码（历史教训见 3a983b5c：自动合并曾把 storage.dart / api.dart 改坏），本次未推送分支、未创建 PR。"
+              echo ""
+              if [ -n "$CONFLICT_FILES" ]; then
+                echo "曾发生冲突并按上游版本自动解决的文件（需人工核对 fork 侧改动是否被覆盖）："
+                printf '%s\n' "$CONFLICT_FILES" | sed 's/^/- `/; s/$/`/'
+                echo ""
+              else
+                echo "本次合并无冲突，可能是上游 API 变更影响了 fork 代码。"
+                echo ""
+              fi
+              echo "### flutter pub get（末尾 10 行）"
+              echo ""
+              echo '```'
+              tail -10 /tmp/pubget.log
+              echo '```'
+              echo ""
+              echo "### dart format（末尾 20 行）"
+              echo ""
+              echo '```'
+              tail -20 /tmp/fmt.log
+              echo '```'
+              echo ""
+              echo "### flutter analyze（末尾 40 行）"
+              echo ""
+              echo '```'
+              tail -40 /tmp/analyze.log
+              echo '```'
+              echo ""
+              echo "### 人工处理方式"
+              echo ""
+              echo '```bash'
+              echo "git fetch upstream --tags"
+              echo "git checkout -b sync-upstream-$LATEST_TAG origin/main"
+              echo "git merge $LATEST_TAG"
+              echo "# 调和 fork 侧改动后：git push -u origin sync-upstream-$LATEST_TAG 并创建 PR"
+              echo '```'
+            } > /tmp/issue_body.md
+            ISSUE_TITLE="上游同步失败：$LATEST_TAG 合并结果未通过校验"
+            OPEN_COUNT=$(gh issue list --state open --repo "$FORK_REPO" \
+                           --search "$ISSUE_TITLE in:title" --json number --jq 'length')
+            if [ "$OPEN_COUNT" = "0" ]; then
+              gh issue create --repo "$FORK_REPO" --title "$ISSUE_TITLE" \
+                --body-file /tmp/issue_body.md
+            else
+              echo "同名 issue 已存在，跳过创建"
+            fi
+            exit 1
+          fi
+
+      - name: Push sync branch
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          LATEST_TAG: ${{ steps.resolve.outputs.tag }}
+        run: |
+          set -euo pipefail
+          git push -f origin "sync-upstream-$LATEST_TAG"
+
+      - name: Create or reuse PR
+        id: pr
+        if: steps.resolve.outputs.skip != 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          LATEST_TAG: ${{ steps.resolve.outputs.tag }}
+          CONFLICT_FILES: ${{ steps.merge.outputs.conflicts }}
+          RESTORED: ${{ steps.merge.outputs.restored }}
+          AUTO_MERGE: ${{ inputs.auto_merge }}
+        run: |
+          set -euo pipefail
+          SYNC_BRANCH="sync-upstream-$LATEST_TAG"
+          # 只检查 open 状态：已关闭未合并的旧 PR 不阻塞重新同步
+          PR_URL=$(gh pr list --head "$SYNC_BRANCH" --state open \
+                     --repo "$FORK_REPO" --json url --jq '.[0].url' || true)
+
+          {
+            echo "自动同步上游 [Predidit/Kazumi](https://github.com/Predidit/Kazumi/releases/tag/$LATEST_TAG)。"
+            echo ""
+            if [ -n "$CONFLICT_FILES" ]; then
+              echo "⚠️ 以下文件曾发生冲突，已按上游版本自动解决（\`-X theirs\`），**合并前请重点核对 fork 侧改动是否被覆盖**："
+              printf '%s\n' "$CONFLICT_FILES" | sed 's/^/- `/; s/$/`/'
+            else
+              echo "- 本次合并无冲突。"
+            fi
+            if [ -n "$RESTORED" ]; then
+              echo "- 以下 fork 自有文件已强制保留 fork(main) 版本："
+              printf '%s\n' $RESTORED | sed 's/^/  - `/; s/$/`/'
+            fi
+            echo "- 合并结果已通过 \`dart format\` 与 \`flutter analyze\` 校验。"
+            echo "- 合并前请确认 PR 上 Code Quality（analyze/test）与各平台构建检查通过。"
+            echo ""
+            echo "> 由 GitHub Actions 自动创建。"
+          } > /tmp/pr_body.md
+
+          if [ -n "$PR_URL" ]; then
+            echo "PR already open: $PR_URL"
+            gh pr edit "$PR_URL" --repo "$FORK_REPO" --body-file /tmp/pr_body.md
           else
-            gh pr create --repo starlit-dream/Kazumas \
-                         --title "Sync upstream ver $LATEST_TAG" \
-                         --body-file /tmp/pr_body.md \
-                         --base main \
-                         --head "$SYNC_BRANCH"
+            PR_URL=$(gh pr create --repo "$FORK_REPO" \
+                       --title "Sync upstream ver $LATEST_TAG" \
+                       --body-file /tmp/pr_body.md \
+                       --base main \
+                       --head "$SYNC_BRANCH")
+          fi
+          echo "url=$PR_URL" >> "$GITHUB_OUTPUT"
+
+          if [ "$AUTO_MERGE" = "true" ]; then
+            gh pr merge "$PR_URL" --repo "$FORK_REPO" --auto --merge || true
           fi
