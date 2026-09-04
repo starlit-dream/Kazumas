@@ -248,7 +248,8 @@ jobs:
           dart format . > /tmp/fmt_write.log 2>&1; FWRITE=$?
           set -e
           if [ "$FWRITE" -ne 0 ]; then
-            echo "::warning::dart format 写入模式异常（exit $FWRITE）"
+            echo "::warning::dart format 写入模式异常（exit $FWRITE），输出末尾如下："
+            tail -20 /tmp/fmt_write.log || true
           fi
           if ! git diff --quiet || ! git diff --cached --quiet; then
             git add -A
@@ -266,10 +267,12 @@ jobs:
           echo "pub get: $PUB, dart format: $FMT, flutter analyze: $ANA"
 
           if [ "$PUB" -ne 0 ] || [ "$FMT" -ne 0 ] || [ "$ANA" -ne 0 ]; then
-            echo "--- flutter analyze（末尾 60 行）---"
-            tail -60 /tmp/analyze.log || true
-            echo "--- dart format（末尾 10 行）---"
-            tail -10 /tmp/fmt.log || true
+            echo "--- flutter analyze（error/warning 级别）---"
+            grep -E "^ *(error|warning) •" /tmp/analyze.log || true
+            echo "--- flutter analyze（末尾 30 行）---"
+            tail -30 /tmp/analyze.log || true
+            echo "--- dart format 检查输出（末尾 20 行）---"
+            tail -20 /tmp/fmt.log || true
             {
               echo "自动同步上游 \`$LATEST_TAG\` 时，合并可以完成，但合并结果未通过代码校验。"
               echo ""
