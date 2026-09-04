@@ -134,20 +134,28 @@ jobs:
             echo "Retrying merge with -X theirs..."
             if ! git merge "$LATEST_TAG" --no-ff --allow-unrelated-histories \
                    -X theirs --no-commit; then
-              echo "Resolving modify/delete conflicts by taking upstream version..."
-              while IFS= read -r p; do
+              # 剩下的都是 modify/delete 冲突：两侧必有一方删除了该路径，
+              # 统一按"删除"解决——上游删除的跟随删除；fork 有意删除的
+              # （如 fastlane 下的子模块 gitlink）保持删除。
+              # 用 plumbing 的 update-index --force-remove，不 checkout、不 git add：
+              # gitlink 条目上 checkout/rm/add 行为不一致且 cat-file 会报
+              # bad object 假阴性（子模块 commit 对象本地不存在），曾导致
+              # 线上残留未解决冲突。
+              echo "Resolving modify/delete conflicts by removing the path..."
+              git diff -z --name-only --diff-filter=U > /tmp/unmerged.z
+              while IFS= read -r -d '' p; do
                 [ -z "$p" ] && continue
-                echo "  taking upstream version of: $p"
-                if ! git checkout "$LATEST_TAG" -- "$p" 2>/dev/null; then
-                  # 上游已删除该文件，fallback 为删除
-                  git rm -f --quiet -- "$p" 2>/dev/null || true
-                fi
-                git add -f -- "$p" 2>/dev/null || true
-              done < <(git diff --name-only --diff-filter=U)
+                echo "  removing conflicted path: $p"
+                git update-index --force-remove -- "$p"
+                # gitlink 冲突路径在 merge 后是目录，必须 -r
+                rm -rf -- "$p"
+              done < /tmp/unmerged.z
             fi
 
             REMAINING=$(git diff --name-only --diff-filter=U || true)
             if [ -n "$REMAINING" ]; then
+              echo "::error::以下冲突无法自动解决："
+              echo "$REMAINING"
               {
                 echo "自动同步上游 \`$LATEST_TAG\` 时出现无法自动解决的冲突："
                 echo ""
@@ -164,11 +172,13 @@ jobs:
                 echo '```'
               } > /tmp/issue_body.md
               ISSUE_TITLE="上游同步失败：$LATEST_TAG 存在无法自动解决的冲突"
+              # 仓库可能禁用了 Issues，gh 调用失败只告警，不影响失败退出
               OPEN_COUNT=$(gh issue list --state open --repo "$FORK_REPO" \
-                             --search "$ISSUE_TITLE in:title" --json number --jq 'length')
+                             --search "$ISSUE_TITLE in:title" --json number --jq 'length' 2>/dev/null || echo "")
               if [ "$OPEN_COUNT" = "0" ]; then
                 gh issue create --repo "$FORK_REPO" --title "$ISSUE_TITLE" \
-                  --body-file /tmp/issue_body.md
+                  --body-file /tmp/issue_body.md \
+                  || echo "WARN: issue 创建失败（仓库可能已禁用 Issues），以失败的运行作为通知"
               else
                 echo "同名 issue 已存在，跳过创建"
               fi
@@ -281,11 +291,13 @@ jobs:
               echo '```'
             } > /tmp/issue_body.md
             ISSUE_TITLE="上游同步失败：$LATEST_TAG 合并结果未通过校验"
+            # 仓库可能禁用了 Issues，gh 调用失败只告警，不影响失败退出
             OPEN_COUNT=$(gh issue list --state open --repo "$FORK_REPO" \
-                           --search "$ISSUE_TITLE in:title" --json number --jq 'length')
+                           --search "$ISSUE_TITLE in:title" --json number --jq 'length' 2>/dev/null || echo "")
             if [ "$OPEN_COUNT" = "0" ]; then
               gh issue create --repo "$FORK_REPO" --title "$ISSUE_TITLE" \
-                --body-file /tmp/issue_body.md
+                --body-file /tmp/issue_body.md \
+                || echo "WARN: issue 创建失败（仓库可能已禁用 Issues），以失败的运行作为通知"
             else
               echo "同名 issue 已存在，跳过创建"
             fi
