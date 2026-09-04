@@ -179,6 +179,8 @@ jobs:
                 gh issue create --repo "$FORK_REPO" --title "$ISSUE_TITLE" \
                   --body-file /tmp/issue_body.md \
                   || echo "WARN: issue 创建失败（仓库可能已禁用 Issues），以失败的运行作为通知"
+              elif [ -z "$OPEN_COUNT" ]; then
+                echo "WARN: 无法查询 issue 状态（仓库可能已禁用 Issues），跳过 issue 通知"
               else
                 echo "同名 issue 已存在，跳过创建"
               fi
@@ -240,6 +242,20 @@ jobs:
           CONFLICT_FILES: ${{ steps.merge.outputs.conflicts }}
         run: |
           set -euo pipefail
+          # 上游不完全遵守 dart format，而 fork 的 quality.yaml 强制要求格式统一，
+          # 先把合并结果自动格式化并并入同步提交；语义层面的破坏仍交给 analyze 把关
+          set +e
+          dart format . > /tmp/fmt_write.log 2>&1; FWRITE=$?
+          set -e
+          if [ "$FWRITE" -ne 0 ]; then
+            echo "::warning::dart format 写入模式异常（exit $FWRITE）"
+          fi
+          if ! git diff --quiet || ! git diff --cached --quiet; then
+            git add -A
+            git commit --amend --no-edit
+            echo "已对合并结果统一 dart format 并并入同步提交"
+          fi
+
           # 与 quality.yaml 相同的静态检查（同一 Flutter 版本）：自动合并的结果
           # 必须先通过校验，避免把 storage.dart / api.dart 那样的静默破坏推成 PR
           set +e
@@ -250,6 +266,10 @@ jobs:
           echo "pub get: $PUB, dart format: $FMT, flutter analyze: $ANA"
 
           if [ "$PUB" -ne 0 ] || [ "$FMT" -ne 0 ] || [ "$ANA" -ne 0 ]; then
+            echo "--- flutter analyze（末尾 60 行）---"
+            tail -60 /tmp/analyze.log || true
+            echo "--- dart format（末尾 10 行）---"
+            tail -10 /tmp/fmt.log || true
             {
               echo "自动同步上游 \`$LATEST_TAG\` 时，合并可以完成，但合并结果未通过代码校验。"
               echo ""
@@ -298,6 +318,8 @@ jobs:
               gh issue create --repo "$FORK_REPO" --title "$ISSUE_TITLE" \
                 --body-file /tmp/issue_body.md \
                 || echo "WARN: issue 创建失败（仓库可能已禁用 Issues），以失败的运行作为通知"
+            elif [ -z "$OPEN_COUNT" ]; then
+              echo "WARN: 无法查询 issue 状态（仓库可能已禁用 Issues），跳过 issue 通知"
             else
               echo "同名 issue 已存在，跳过创建"
             fi
